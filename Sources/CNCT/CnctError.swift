@@ -11,7 +11,7 @@ import Foundation
 /// do { try await chat.send("Hello") }
 /// catch let error as CnctError where error.code == .conversationClosed { startAgain() }
 /// ```
-public struct CnctError: Error, Sendable {
+public struct CnctError: Error, Sendable, Hashable {
   /// For a human. Never parse this — branch on ``code``.
   public let message: String
 

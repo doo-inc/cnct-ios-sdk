@@ -46,11 +46,12 @@ final class FakeServer: @unchecked Sendable {
     seen = []
   }
 
-  /// A transport whose every request lands here.
-  func transport() -> CnctTransport {
+  /// A transport whose every request lands here — on this server's config, or on one a test has
+  /// changed (a shorter send timeout, say), which must still point at this server's host.
+  func transport(_ config: CnctConfig? = nil) -> CnctTransport {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [RoutedProtocol.self]
-    return CnctTransport(config: config, session: URLSession(configuration: configuration))
+    return CnctTransport(config: config ?? self.config, session: URLSession(configuration: configuration))
   }
 
   fileprivate func handle(_ request: Request) throws -> (Int, Data) {
@@ -140,4 +141,11 @@ func caughtCnctError(_ body: () async throws -> Void) async -> CnctError? {
     Issue.record("expected a CnctError, got \(error)")
     return nil
   }
+}
+
+/// An instant, written the way a person reads one.
+func utc(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+  var calendar = Calendar(identifier: .gregorian)
+  calendar.timeZone = TimeZone(identifier: "UTC")!
+  return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
 }

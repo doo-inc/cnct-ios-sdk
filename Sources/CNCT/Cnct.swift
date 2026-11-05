@@ -22,6 +22,7 @@ public enum CnctModule: String, Sendable, Hashable, CaseIterable {
 ///
 /// ```swift
 /// let cnct = Cnct()                                    // https://app.doo.ooo
+/// let chat = cnct.chat(try CnctChatPublicKey("inbox-public-key"))
 /// let local = try Cnct(host: "http://localhost:3001")
 /// ```
 ///
@@ -52,8 +53,55 @@ public struct Cnct: Sendable {
     credentials.modules
   }
 
+  /// Live chat, as a visitor. The credential is an inbox's public key — the one credential in this
+  /// SDK that is meant to be inside your app.
+  ///
+  /// Pass a `tokenStore` to keep the visitor's session across restarts. The default keeps it in
+  /// memory, which means a returning customer arrives as a stranger.
+  public func chat(
+    _ credentials: CnctChatPublicKey,
+    tokenStore: (any CnctTokenStore)? = nil,
+    storageKey: String? = nil
+  ) -> CnctChatClient {
+    CnctChatClient(config: config, credentials: credentials, tokenStore: tokenStore, storageKey: storageKey)
+  }
+
   /// Bookings and tickets, on an account-wide API key. **Server-side only** — see ``CnctApiKey``.
   public func agent(_ credentials: CnctApiKey) -> CnctAgentClient {
     CnctAgentClient(config: config, credentials: credentials)
+  }
+
+  /// The client for a credential, whatever kind it is.
+  ///
+  /// For an app that is handed one of the two and has to work out what it can do — a settings
+  /// screen where somebody pastes whatever CNCT gave them, say. Throws
+  /// ``CnctErrorCode/missingCredential`` for a credential this returns nothing for: one of your own
+  /// conforming to ``CnctCredentials``.
+  public func client(for credentials: any CnctCredentials) throws -> CnctClient {
+    switch credentials {
+    case let key as CnctChatPublicKey: return .chat(chat(key))
+    case let key as CnctApiKey: return .agent(agent(key))
+    default:
+      throw CnctError(
+        "No CNCT client opens \(credentials.redacted). Use a CnctChatPublicKey or a CnctApiKey.",
+        code: .missingCredential
+      )
+    }
+  }
+}
+
+/// What ``Cnct/client(for:)`` hands back: the one client a credential opens.
+public enum CnctClient: Sendable {
+  /// From a ``CnctChatPublicKey``.
+  case chat(CnctChatClient)
+  /// From a ``CnctApiKey``.
+  case agent(CnctAgentClient)
+
+  /// What this client can do — the same answer as ``Cnct/modules(for:)`` for its credential.
+  public var modules: Set<CnctModule> {
+    switch self {
+    case .chat: return [.chat]
+    case .agent: return [.bookings, .tickets]
+    }
   }
 }
