@@ -28,3 +28,9 @@
   drive the client with a fake one.
 - `Cnct.chat(_:tokenStore:storageKey:)` and `Cnct.client(for:)`, which answers a `CnctClient`.
 - `CnctError` is `Hashable`, so `CnctChatState` can be too.
+- **`CnctKeychainTokenStore`**: the visitor's session token as a Keychain generic password, readable
+  after first unlock, under a configurable service and an optional access group. Its failures are
+  `CnctErrorCode.storageFailed` (`storage_failed`), a new client-side code.
+- **`Examples/ChatDemo`**, a SwiftUI chat screen on the headless client and the Keychain store,
+  built in CI. Not part of the package product.
+- The README covers chat, bookings and tickets.
