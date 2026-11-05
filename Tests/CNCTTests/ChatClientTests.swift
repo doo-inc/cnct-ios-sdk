@@ -642,6 +642,19 @@ struct ChatClientTests {
     await chat.dispose()
   }
 
+  @Test("printing a client never prints the visitor's session token")
+  func redactsToken() async throws {
+    let chat = clientWith(chatServer(), sockets: FakeSocketFactory())
+    try await chat.start(displayName: "Layla")
+    var dumped = ""
+    dump(chat, to: &dumped)
+    for text in [dumped, "\(chat)", String(reflecting: chat)] {
+      #expect(!text.contains("visitor-token-1"), "\(text)")
+    }
+    #expect("\(chat)".contains("publicKey:"))
+    await chat.dispose()
+  }
+
   @Test("the entry point hands out the client a credential opens")
   func entryPoints() async throws {
     let cnct = try Cnct(host: "https://cnct.test/support")
