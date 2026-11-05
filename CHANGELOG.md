@@ -7,7 +7,8 @@
   `CnctChatPublicKey`, `CnctApiKey` with `CnctKeyMode` (sandbox / production), `CnctModule`,
   `CnctError` with the shared `CnctErrorCode` vocabulary, `CnctJSON`, `CnctTokenStore` with a memory
   store, and `CnctTransport` on URLSession.
-- Credentials redact themselves in `print`, `po` and `dump`.
+- Credentials redact themselves in `print`, `po` and `dump`, and so do the clients that hold them:
+  neither the API key nor a visitor's session token is ever printed.
 - Query values are encoded strictly, so a `+` in a phone number is not read as a space.
 - **Bookings and tickets** on a `kaer_sk_` API key, ported from the Flutter SDK: `CnctAgentClient`
   (and `Cnct.agent(_:)`) with `catalogue()`, `bookings` (`services`, `people`, `checkAvailability`,
@@ -28,3 +29,9 @@
   drive the client with a fake one.
 - `Cnct.chat(_:tokenStore:storageKey:)` and `Cnct.client(for:)`, which answers a `CnctClient`.
 - `CnctError` is `Hashable`, so `CnctChatState` can be too.
+- **`CnctKeychainTokenStore`**: the visitor's session token as a Keychain generic password, readable
+  after first unlock, under a configurable service and an optional access group. Its failures are
+  `CnctErrorCode.storageFailed` (`storage_failed`), a new client-side code.
+- **`Examples/ChatDemo`**, a SwiftUI chat screen on the headless client and the Keychain store,
+  built in CI. Not part of the package product.
+- The README covers chat, bookings and tickets.

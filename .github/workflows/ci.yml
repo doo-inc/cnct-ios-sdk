@@ -37,3 +37,18 @@ jobs:
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
       - name: Test on the simulator
         run: xcodebuild test -scheme CNCT -destination "id=${{ steps.sim.outputs.udid }}"
+
+  example:
+    name: Example app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # A build, not a run: it proves the example still compiles against the package as it is on
+      # this branch, which is the whole promise an example makes. Unsigned — nothing is installed.
+      - name: Build Examples/ChatDemo for the simulator
+        run: >
+          xcodebuild build
+          -project Examples/ChatDemo/ChatDemo.xcodeproj
+          -scheme ChatDemo
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO

@@ -112,4 +112,7 @@ public struct CnctErrorCode: RawRepresentable, Hashable, Sendable, ExpressibleBy
   /// A tool declined, in a sentence rather than a status code. The platform answers `200` with an
   /// `error` key when it will not do something, and this is that, raised.
   public static let toolRefused: CnctErrorCode = "tool_refused"
+  /// The device would not keep or hand back the visitor's session token — the Keychain refused,
+  /// most often because the device has not been unlocked since it started. Nothing reached a server.
+  public static let storageFailed: CnctErrorCode = "storage_failed"
 }

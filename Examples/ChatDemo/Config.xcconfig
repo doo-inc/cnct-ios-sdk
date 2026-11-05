@@ -1,0 +1,17 @@
+// The two values the demo needs, as build settings rather than constants in the source.
+//
+// Put yours in Local.xcconfig, next to this file — it is ignored by git — or pass them to xcodebuild:
+//
+//   xcodebuild ... CNCT_PUBLIC_KEY=your-inbox-public-key
+//
+// The inbox public key is the one credential that is meant to be inside an app: it identifies an
+// inbox, not a person, and it is already in the URL of the hosted chat page.
+CNCT_PUBLIC_KEY =
+
+// Optional. Empty means CNCT production, https://app.doo.ooo. An xcconfig reads "//" as the start of
+// a comment, so a URL is written with an empty variable between the slashes:
+//
+//   CNCT_BASE_URL = http:/$()/localhost:3001
+CNCT_BASE_URL =
+
+#include? "Local.xcconfig"

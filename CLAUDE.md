@@ -21,40 +21,33 @@ The Android twin is `doo-inc/cnct-android-sdk`; keep the two public surfaces par
 ## What is here (tested)
 
 `CnctConfig` / `CnctHosts`, `CnctChatPublicKey` / `CnctApiKey` / `CnctKeyMode`, `Cnct` /
-`CnctModule`, `CnctError` / `CnctErrorCode`, `CnctJSON`, `CnctTokenStore` + memory store,
-`CnctTransport` (URLSession, the Flutter transport's error mapping). Build on these — do not add a
-second HTTP path or a second error type.
+`CnctModule` / `CnctClient`, `CnctError` / `CnctErrorCode`, `CnctJSON`, `CnctTokenStore` + memory
+store + `CnctKeychainTokenStore`, `CnctTransport` (URLSession, the Flutter transport's error mapping).
+Build on these — do not add a second HTTP path or a second error type.
 
-## What is left to build
+- **Agent client** (`Sources/CNCT/Agent`): `CnctAgentClient` — `catalogue()`, `bookings`, `tickets`,
+  `call` / `callOrThrow` on `/api/tools`. Ports `lib/src/agent/` and `test/agent_client_test.dart`.
+- **Chat client** (`Sources/CNCT/Chat`): `CnctChatClient`, an actor; `state` / `states` / `events`
+  are `nonisolated` (`AsyncStream`s via `CnctBroadcast`). The socket is `CnctURLSessionSocket` behind
+  `CnctSocket` / `CnctSocketFactory`. Ports `lib/src/chat/` and both chat test files.
+- **Tests**: `Tests/CNCTTests/Support` has `FakeServer` (a `URLProtocol` routed by host, so suites
+  run in parallel), `FakeSocket` / `FakeSocketFactory`, `EventLog` and `eventually`.
+  `URLSessionSocketTests` runs a real loopback WebSocket (Network.framework, Apple only). The
+  Keychain suite skips itself where the test process has no Keychain (the iOS Simulator, in CI).
+- **Example app**: `Examples/ChatDemo` — Xcode 16 project (synchronized folder, local package
+  reference to the repo root), key and host from `Config.xcconfig` / `Local.xcconfig`. CI builds it.
 
-1. **Chat client** — port `lib/src/chat/` (`chat_client.dart`, `chat_models.dart`,
-   `chat_events.dart`, `chat_state.dart`) and `test/chat_client_test.dart`.
-   - `boot`, `start`, `resume`, `send`, `retry`, `typing`, `end`, `downloadAttachment`, `connect`,
-     `disconnect`, `dispose`; `state`, `states`, `events`, `hasSession`.
-   - Make the client an `actor` (or `@MainActor`-free final class with a lock). Expose states and
-     events as `AsyncStream`s; consider an `@Observable` wrapper only in the example app.
-   - Socket: `URLSessionWebSocketTask` at `socketBaseURL` + `/ws/chat`. Put it behind a protocol
-     (the Flutter `CnctSocketFactory`) so tests drive a fake socket without a server.
-   - Keep the load-bearing behaviours: a reconnect **reloads the transcript**; every send carries a
-     `clientKey` (idempotent); sends go over the socket when the handshake `accepts` `send`, else
-     HTTP; the visitor token rides on `x-chat-token`, never `Authorization`; an unauthenticated
-     answer clears the stored token.
-2. **Agent client** — port `lib/src/agent/` and `test/agent_client_test.dart`: `catalogue()`,
-   `bookings` (`services`, `people`, `checkAvailability`, `create`, `forCustomer`, `reschedule`,
-   `cancel`), `tickets` (`types`, `type`, `create`, `forCustomer`, `get`, `addTo`). Calls
-   `/api/tools`. A 200 with an `error` key is `CnctErrorCode.toolRefused`. Models carry `sandbox`.
-3. **`CnctKeychainTokenStore`** — Keychain generic-password, `kSecAttrAccessibleAfterFirstUnlock`,
-   service name configurable. Test it only where the Keychain is available (skip on CI if it is
-   not); do not let a flaky Keychain test block the suite.
-4. **Entry points** — `Cnct.chat(_:tokenStore:storageKey:)`, `Cnct.agent(_:)`, `Cnct.client(for:)`.
-5. **Example app** — `Examples/ChatDemo`, SwiftUI, a complete chat screen on the headless client in
-   a few hundred lines, Keychain token store, public key from a build setting. Not part of the
-   package product.
-6. **Docs** — README sections for chat, bookings, tickets (mirror the Flutter README), CHANGELOG.
+Where the Swift port deliberately differs from the Dart, the pull requests that added it say why
+(doo-inc/cnct-ios-sdk#1, #2, #3).
+
+A Linux box can run `swift test` with a swift.org toolchain: everything but the Network and Security
+suites builds there. Linux's libcurl has no WebSocket support, so the real socket is CI-only.
+
+## What is left
 
 Newer visitor features on the server (past conversations, ratings, identity verification, visitor
-uploads, "Seen") are **not** in the Flutter SDK yet. Parity with Flutter 0.2.0 first; list those as
-follow-ups in the PR rather than inventing their wire format.
+uploads, "Seen") are **not** in the Flutter SDK yet. Port them once Flutter or the web SDK defines
+their wire format rather than inventing one here, and keep the Android twin's surface parallel.
 
 ## Rules
 
