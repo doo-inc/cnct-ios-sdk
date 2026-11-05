@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# Swift Package Manager installs straight from a tag, so the tag *is* the release. This makes sure a
+# tag only goes out when the tests pass and the version the SDK reports matches the tag it was cut
+# from — a User-Agent that lies about its version is a support ticket nobody can answer.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches CnctConfig.sdkVersion
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          reported="$(sed -nE 's/.*static let sdkVersion = "([^"]+)".*/\1/p' Sources/CNCT/CnctConfig.swift)"
+          if [ "$tagged" != "$reported" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match CnctConfig.sdkVersion $reported." >&2
+            exit 1
+          fi
+      - run: swift test
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

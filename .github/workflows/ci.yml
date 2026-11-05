@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: Package (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+
+  ios:
+    name: iOS Simulator
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # The first available iPhone, by id. Simulator names change with every runner image, and a
+      # name that stopped existing fails the job for a reason that has nothing to do with the SDK.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid="$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          print(next(d['udid'] for runtime, items in devices.items() if 'iOS' in runtime for d in items if d['name'].startswith('iPhone')))
+          ")"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Test on the simulator
+        run: xcodebuild test -scheme CNCT -destination "id=${{ steps.sim.outputs.udid }}"
