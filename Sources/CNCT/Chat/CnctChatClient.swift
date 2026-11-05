@@ -44,6 +44,9 @@ import Foundation
 public actor CnctChatClient {
   private let config: CnctConfig
   private let publicKey: String
+  /// The public key's redacted form. The client describes itself with this and the state, never
+  /// with its stored properties — one of them is the visitor's session token.
+  private let redacted: String
   private let store: any CnctTokenStore
   private let storageKey: String
   private let transport: CnctTransport
@@ -92,6 +95,7 @@ public actor CnctChatClient {
   ) {
     self.config = config
     self.publicKey = credentials.publicKey
+    self.redacted = credentials.redacted
     self.store = tokenStore ?? CnctMemoryTokenStore()
     self.storageKey = storageKey ?? "cnct_chat_\(credentials.publicKey)"
     self.transport = transport ?? CnctTransport(config: config)
@@ -744,5 +748,15 @@ public actor CnctChatClient {
     let stamp = String(UInt64(Date().timeIntervalSince1970 * 1_000_000), radix: 36)
     let noise = String((0..<10).map { _ in alphabet.randomElement()! })
     return "k\(stamp)\(noise)"
+  }
+}
+
+// MARK: - Printing without the session token
+
+extension CnctChatClient: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+  public nonisolated var description: String { "CnctChatClient(\(redacted), \(state.status.rawValue))" }
+  public nonisolated var debugDescription: String { description }
+  public nonisolated var customMirror: Mirror {
+    Mirror(self, children: ["credentials": redacted, "state": state])
   }
 }
