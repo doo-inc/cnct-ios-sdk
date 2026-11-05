@@ -399,9 +399,3 @@ struct AgentClientTests {
     #expect(cnct.agent(try CnctApiKey("kaer_sk_test_abc")).mode == .sandbox)
   }
 }
-
-private func utc(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
-  var calendar = Calendar(identifier: .gregorian)
-  calendar.timeZone = TimeZone(identifier: "UTC")!
-  return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
-}
