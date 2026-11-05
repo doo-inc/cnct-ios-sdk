@@ -7,7 +7,8 @@
   `CnctChatPublicKey`, `CnctApiKey` with `CnctKeyMode` (sandbox / production), `CnctModule`,
   `CnctError` with the shared `CnctErrorCode` vocabulary, `CnctJSON`, `CnctTokenStore` with a memory
   store, and `CnctTransport` on URLSession.
-- Credentials redact themselves in `print`, `po` and `dump`.
+- Credentials redact themselves in `print`, `po` and `dump`, and so do the clients that hold them:
+  neither the API key nor a visitor's session token is ever printed.
 - Query values are encoded strictly, so a `+` in a phone number is not read as a space.
 - **Bookings and tickets** on a `kaer_sk_` API key, ported from the Flutter SDK: `CnctAgentClient`
   (and `Cnct.agent(_:)`) with `catalogue()`, `bookings` (`services`, `people`, `checkAvailability`,
