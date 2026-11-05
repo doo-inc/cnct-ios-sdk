@@ -393,6 +393,23 @@ struct AgentClientTests {
     #expect(error?.code == .badResponse)
   }
 
+  @Test("printing a client, or either half of it, never prints the key")
+  func redacts() throws {
+    let agent = CnctAgentClient(config: CnctConfig(), credentials: try CnctApiKey("kaer_sk_test_supersecretWXYZ"))
+    var dumped = ""
+    dump(agent, to: &dumped)
+    dump(agent.bookings, to: &dumped)
+    dump(agent.tickets, to: &dumped)
+    let printed = [
+      dumped, "\(agent)", "\(agent.bookings)", "\(agent.tickets)",
+      String(reflecting: agent), String(reflecting: agent.bookings), String(reflecting: agent.tickets),
+    ]
+    for text in printed {
+      #expect(!text.contains("supersecret"), "\(text)")
+    }
+    #expect("\(agent.bookings)".contains("apiKey:…WXYZ"))
+  }
+
   @Test("the entry point hands out an agent on the same host")
   func entryPoint() throws {
     let cnct = try Cnct(host: "https://cnct.test")

@@ -38,7 +38,8 @@ public final class CnctAgentClient: Sendable {
   public init(config: CnctConfig, credentials: CnctApiKey, transport: CnctTransport? = nil) {
     let tools = CnctToolCaller(
       transport: transport ?? CnctTransport(config: config),
-      headers: credentials.headers
+      headers: credentials.headers,
+      redacted: credentials.redacted
     )
     self.tools = tools
     self.mode = credentials.mode
@@ -80,7 +81,10 @@ public final class CnctAgentClient: Sendable {
 /// half holds the client — and so a refusal is raised in exactly one place.
 struct CnctToolCaller: Sendable {
   let transport: CnctTransport
+  /// Holds the API key, which is why this type, and everything that holds it, describes itself with
+  /// ``redacted`` instead: a client that ends up in a log line or a crash report is not a leak.
   let headers: [String: String]
+  let redacted: String
 
   func call(_ tool: String, _ args: [String: CnctJSON]) async throws -> [String: CnctJSON] {
     try await transport.post(
@@ -344,4 +348,30 @@ public struct CnctTickets: Sendable {
     // The number comes back even when the platform's answer leaves it out.
     return CnctTicketFollowUp(json: .object(["ticketNumber": .int(ticketNumber)].merging(result) { _, answered in answered }))
   }
+}
+
+// MARK: - Printing without the key
+
+extension CnctToolCaller: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+  var description: String { redacted }
+  var debugDescription: String { redacted }
+  var customMirror: Mirror { Mirror(self, children: ["credentials": redacted]) }
+}
+
+extension CnctAgentClient: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+  public var description: String { "CnctAgentClient(\(tools.redacted), \(mode.rawValue))" }
+  public var debugDescription: String { description }
+  public var customMirror: Mirror { Mirror(self, children: ["credentials": tools.redacted, "mode": mode]) }
+}
+
+extension CnctBookings: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+  public var description: String { "CnctBookings(\(tools.redacted))" }
+  public var debugDescription: String { description }
+  public var customMirror: Mirror { Mirror(self, children: ["credentials": tools.redacted]) }
+}
+
+extension CnctTickets: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+  public var description: String { "CnctTickets(\(tools.redacted))" }
+  public var debugDescription: String { description }
+  public var customMirror: Mirror { Mirror(self, children: ["credentials": tools.redacted]) }
 }
