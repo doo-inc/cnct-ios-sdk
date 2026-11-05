@@ -46,9 +46,14 @@ public struct Cnct: Sendable {
     Cnct(config: try config.withBaseURL(baseURL))
   }
 
-  /// What a credential opens. Tickets also need the account to hold ticketing — the agent client's
-  /// catalogue says what a particular account actually offers.
+  /// What a credential opens. Tickets also need the account to hold ticketing — ask
+  /// ``CnctAgentClient/catalogue()`` for what a particular account actually offers.
   public static func modules(for credentials: any CnctCredentials) -> Set<CnctModule> {
     credentials.modules
+  }
+
+  /// Bookings and tickets, on an account-wide API key. **Server-side only** — see ``CnctApiKey``.
+  public func agent(_ credentials: CnctApiKey) -> CnctAgentClient {
+    CnctAgentClient(config: config, credentials: credentials)
   }
 }
