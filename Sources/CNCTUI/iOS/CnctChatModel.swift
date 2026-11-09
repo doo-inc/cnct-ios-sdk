@@ -269,7 +269,7 @@
     /// The conversation exists on the server — started now if this is the first thing they do.
     private func ensureSession() async throws {
       let had = state.conversation?.isLive == true && state.status != .idle
-      try await client.startIfNeeded()
+      try await client.ensureSession()
       if !had { onEvent?(.started) }
     }
 
@@ -463,7 +463,7 @@
     /// A team reply is on screen and the app is in the foreground: tell the team, once per reply.
     func sawThread() {
       guard phase == .chat else { return }
-      Task { await client.markRead() }
+      Task { await client.read() }
     }
 
     /// The app came back to the foreground: the socket may have gone while it was away.
@@ -471,7 +471,7 @@
       guard phase == .chat, state.isLive else { return }
       Task {
         await client.connect()
-        await client.markRead()
+        await client.read()
       }
     }
 

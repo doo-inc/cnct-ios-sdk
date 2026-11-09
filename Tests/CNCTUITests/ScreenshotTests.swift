@@ -46,22 +46,25 @@
       let folder = Self.folder()
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
-      // Ended, rated four, and the box for more.
-      let ended = CnctChatModel(client: CnctChatFixture.client(language: .en), ownsClient: true, identity: nil, fixture: .en)
-      ended.open()
-      Self.spin { ended.phase == .chat && ended.state.failed.count == 1 }
-      ended.end()
-      Self.spin { ended.state.conversation?.ratable == true }
-      ended.rate(4)
-      try save(
-        render(CnctChatView(model: ended, theme: CnctChatTheme(appearance: .light), language: .en, onClose: {}), height: 1400),
-        "chat-en-ended", to: folder)
+      for language in [CnctChatLanguage.en, .ar] {
+        // Ended, rated four, and the box for more.
+        let ended = CnctChatModel(
+          client: CnctChatFixture.client(language: language), ownsClient: true, identity: nil, fixture: language)
+        ended.open()
+        Self.spin { ended.phase == .chat && ended.state.failed.count == 1 }
+        ended.end()
+        Self.spin { ended.state.conversation?.ratable == true }
+        ended.rate(4)
+        try save(
+          render(CnctChatView(model: ended, theme: CnctChatTheme(appearance: .light), language: language, onClose: {}), height: 1400),
+          "chat-\(language.rawValue)-ended", to: folder)
 
-      // A stranger, on an inbox that asks for a name first.
-      let intro = CnctChatModel(client: CnctChatFixture.client(language: .ar), ownsClient: true, identity: nil)
-      try save(
-        render(CnctChatView(model: intro, theme: CnctChatTheme(appearance: .light), language: .ar, onClose: {}), height: 844),
-        "chat-ar-intro", to: folder)
+        // A stranger, on an inbox that asks for a name first.
+        let intro = CnctChatModel(client: CnctChatFixture.client(language: language), ownsClient: true, identity: nil)
+        try save(
+          render(CnctChatView(model: intro, theme: CnctChatTheme(appearance: .light), language: language, onClose: {}), height: 844),
+          "chat-\(language.rawValue)-intro", to: folder)
+      }
 
       for language in [CnctChatLanguage.en, .ar] {
         try save(
