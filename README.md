@@ -4,7 +4,7 @@ The official CNCT SDK for iOS and Swift: a ready-made chat screen you can brand,
 client underneath it — live chat, bookings and tickets against a CNCT workspace, using the
 credentials CNCT issues you.
 
-> **1.0.0, not yet tagged.** Released together with the [web](https://github.com/doo-inc/cnct-web-sdk)
+> **1.0.0, tagged 2026-11-09.** Released together with the [web](https://github.com/doo-inc/cnct-web-sdk)
 > and [Android](https://github.com/doo-inc/cnct-android-sdk) SDKs, from one spec
 > ([`docs/chat-ui/SPEC.md`](docs/chat-ui/SPEC.md)): the same option names, theme tokens and words on
 > every platform.

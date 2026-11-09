@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 — not yet tagged
+## 1.0.0 — 2026-11-09
 
 The first release, together with the web and Android SDKs from one spec (`docs/chat-ui/SPEC.md`):
 the same option names, theme tokens and words on every platform. Nothing before it was tagged, so
