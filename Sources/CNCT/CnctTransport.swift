@@ -152,11 +152,13 @@ public final class CnctTransport: Sendable {
         let task: URLSessionTask
         if let body {
           // The body travels as the upload task's own, which is what the system streams and reports
-          // progress on. It is also left on the request, where URLSession ignores it, for a
-          // `URLProtocol` — a test's, a debugging proxy's — that reads the request rather than the
-          // task. `Data` is shared, not copied, so this costs nothing.
-          var request = request
-          request.httpBody = body
+          // progress on. Apple's URLSession hands it to a `URLProtocol` — a test's, a debugging
+          // proxy's — as the request's body stream; Linux's hands it nothing, so there it is also
+          // left on the request, where the upload itself ignores it. `Data` is shared, not copied.
+          #if canImport(FoundationNetworking)
+            var request = request
+            request.httpBody = body
+          #endif
           task = session.uploadTask(with: request, from: body, completionHandler: finished)
           // A delegate of the task's own, so progress reaches this upload and nothing else — the
           // session may be `URLSession.shared`, which has no delegate to ask.
