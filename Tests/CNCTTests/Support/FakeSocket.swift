@@ -152,7 +152,11 @@ final class EventLog<Element: Sendable>: @unchecked Sendable {
 
 /// Wait for something asynchronous to become true — the Dart suite's `pumpEventQueue()`, for a
 /// client whose work runs on tasks rather than one event loop. False if it never did.
-func eventually(within seconds: Double = 5, _ condition: () async -> Bool) async -> Bool {
+///
+/// The ceiling is generous because a loaded CI simulator has run this suite twenty-five times slower
+/// than usual; every wait ends the moment its condition holds, so it costs nothing when things are
+/// normal.
+func eventually(within seconds: Double = 20, _ condition: () async -> Bool) async -> Bool {
   let deadline = Date().addingTimeInterval(seconds)
   while Date() < deadline {
     if await condition() { return true }
