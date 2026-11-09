@@ -12,39 +12,28 @@
     @Environment(\.cnctWords) var words
     @Environment(\.cnctFormat) var format
 
+    @Environment(\.dynamicTypeSize) var typeSize
+
     var body: some View {
-      HStack(spacing: 12) {
-        CnctLogo(size: 40)
-        VStack(alignment: .leading, spacing: 2) {
-          CnctUserText(text: theme.title, style: .headline, weight: .semibold, color: theme.text, lineLimit: 1)
-          HStack(spacing: 6) {
-            if let color = presence {
-              Circle().fill(color.color).frame(width: 8, height: 8).accessibilityHidden(true)
+      Group {
+        // At the accessibility text sizes a single row has no room for the title, the line and the
+        // buttons together; the title and the line get the full width on rows of their own.
+        if typeSize.isAccessibilitySize {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+              CnctLogo(size: 40)
+              Spacer(minLength: 8)
+              actions
             }
-            Text(line)
-              .font(theme.font(.footnote))
-              .foregroundColor(theme.textMuted.color)
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
+            titles(lineLimit: nil)
           }
-        }
-        .accessibilityElement(children: .combine)
-        Spacer(minLength: 8)
-        if model.canEnd {
-          Button(words("endChat")) { model.confirmingEnd = true }
-            .font(theme.font(.subheadline, weight: .semibold))
-            .foregroundColor(theme.primaryText.color)
-            .frame(minHeight: 44)
-        }
-        if let onClose {
-          Button(action: onClose) {
-            Image(systemName: "xmark")
-              .font(.system(size: 16, weight: .semibold))
-              .foregroundColor(theme.text.color)
-              .frame(width: 44, height: 44)
-              .contentShape(Rectangle())
+        } else {
+          HStack(spacing: 12) {
+            CnctLogo(size: 40)
+            titles(lineLimit: 1)
+            Spacer(minLength: 8)
+            actions
           }
-          .accessibilityLabel(words("closeChat"))
         }
       }
       .padding(.leading, 16)
@@ -57,6 +46,45 @@
       .confirmationDialog(words("endConfirm"), isPresented: $model.confirmingEnd, titleVisibility: .visible) {
         Button(words("endChat"), role: .destructive) { model.end() }
         Button(words("keepChatting"), role: .cancel) {}
+      }
+    }
+
+    private func titles(lineLimit: Int?) -> some View {
+      VStack(alignment: .leading, spacing: 2) {
+        CnctUserText(text: theme.title, style: .headline, weight: .semibold, color: theme.text, lineLimit: lineLimit)
+        HStack(spacing: 6) {
+          if let color = presence {
+            Circle().fill(color.color).frame(width: 8, height: 8).accessibilityHidden(true)
+          }
+          Text(line)
+            .font(theme.font(.footnote))
+            .foregroundColor(theme.textMuted.color)
+            .lineLimit(lineLimit.map { $0 + 1 })
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var actions: some View {
+      if model.canEnd {
+        Button(words("endChat")) { model.confirmingEnd = true }
+          .font(theme.font(.subheadline, weight: .semibold))
+          .foregroundColor(theme.primaryText.color)
+          // Smaller rather than broken across lines: "End chat" split in two reads as two buttons.
+          .lineLimit(1)
+          .minimumScaleFactor(0.6)
+          .frame(minHeight: 44)
+      }
+      if let onClose {
+        Button(action: onClose) {
+          Image(systemName: "xmark")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(theme.text.color)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(words("closeChat"))
       }
     }
 

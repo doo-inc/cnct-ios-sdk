@@ -13,6 +13,7 @@
     @Environment(\.cnctTheme) var theme
     @Environment(\.cnctWords) var words
     @Environment(\.cnctFormat) var format
+    @Environment(\.dynamicTypeSize) var typeSize
 
     var body: some View {
       VStack(alignment: group.mine ? .trailing : .leading, spacing: 4) {
@@ -22,7 +23,8 @@
             CnctBubble(model: model, message: message, mine: group.mine, signer: signer)
             if !group.mine { Spacer(minLength: 48) }
           }
-          if message.failed {
+          // Only while there is a conversation to send it to: after the end, a retry can only fail.
+          if message.failed && model.composerOpen {
             Button {
               model.retry(message)
             } label: {
@@ -51,23 +53,50 @@
       return group.sender?.name ?? theme.title
     }
 
+    /// Who, then when — on one line, or on two at the accessibility text sizes, where one line
+    /// would break the name and the time apart mid-word.
     @ViewBuilder
     private func byline(_ last: CnctChatMessage) -> some View {
-      HStack(spacing: 5) {
-        if !group.mine {
-          CnctFace(who: .sender(group.sender), size: 20)
-          Text(signer).font(theme.font(.caption, weight: .semibold)).foregroundColor(theme.text.color)
-          if group.speaker == .ai {
-            Text(verbatim: "AI")
-              .font(.system(size: 10, weight: .bold))
-              .foregroundColor(theme.primaryText.color)
-              .padding(.horizontal, 5)
-              .padding(.vertical, 1)
-              .background(Capsule().fill(theme.primary.opacity(0.14).color))
-              .accessibilityLabel(words("aiAssistant"))
+      Group {
+        if typeSize.isAccessibilitySize {
+          VStack(alignment: group.mine ? .trailing : .leading, spacing: 2) {
+            if !group.mine { who }
+            when(last)
           }
-          Text(verbatim: "·").accessibilityHidden(true)
+        } else {
+          HStack(spacing: 5) {
+            if !group.mine {
+              who
+              Text(verbatim: "·").accessibilityHidden(true)
+            }
+            when(last)
+          }
         }
+      }
+      .font(theme.font(.caption))
+      .foregroundColor(theme.textMuted.color)
+      .padding(.horizontal, 4)
+      .accessibilityElement(children: .combine)
+    }
+
+    private var who: some View {
+      HStack(spacing: 5) {
+        CnctFace(who: .sender(group.sender), size: 20)
+        Text(signer).font(theme.font(.caption, weight: .semibold)).foregroundColor(theme.text.color)
+        if group.speaker == .ai {
+          Text(verbatim: "AI")
+            .font(theme.font(.caption2, weight: .bold))
+            .foregroundColor(theme.primaryText.color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(theme.primary.opacity(0.14).color))
+            .accessibilityLabel(words("aiAssistant"))
+        }
+      }
+    }
+
+    private func when(_ last: CnctChatMessage) -> some View {
+      HStack(spacing: 5) {
         Text(last.pending ? words("sending") : format.clock(last.createdAt))
         if group.seen {
           Text(verbatim: "·").accessibilityHidden(true)
@@ -75,10 +104,6 @@
           Text(words("seen"))
         }
       }
-      .font(theme.font(.caption))
-      .foregroundColor(theme.textMuted.color)
-      .padding(.horizontal, 4)
-      .accessibilityElement(children: .combine)
     }
   }
 
