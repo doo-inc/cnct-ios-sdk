@@ -132,18 +132,15 @@
       format.scale = 2
       format.opaque = true
       let renderer = UIGraphicsImageRenderer(size: size, format: format)
-      // The first frame of a freshly made window is now and then empty — the render server not
-      // ready for it yet. A few more turns of the run loop and it is.
+      // The first frame of a freshly made window on a freshly booted simulator is now and then
+      // empty. A few more turns of the run loop and it is not. Only `layer.render`: with no app
+      // host, `drawHierarchy(afterScreenUpdates:)` can wait on the render server for minutes.
       var image = renderer.image { context in controller.view.layer.render(in: context.cgContext) }
-      for _ in 0..<5 where Self.isBlank(image) {
+      for _ in 0..<8 where Self.isBlank(image) {
         RunLoop.main.run(until: Date().addingTimeInterval(1))
+        controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         image = renderer.image { context in controller.view.layer.render(in: context.cgContext) }
-        if Self.isBlank(image) {
-          image = renderer.image { _ in
-            _ = controller.view.drawHierarchy(in: CGRect(origin: .zero, size: size), afterScreenUpdates: true)
-          }
-        }
       }
       window.isHidden = true
       window.rootViewController = nil

@@ -139,8 +139,12 @@
         .onChange(of: rows.count) { _ in
           withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
         }
-        // The newest message stays in sight when the keyboard comes up over it.
+        // The newest message stays in sight when the keyboard comes up over it, and when the files
+        // waiting above the composer take some of the thread's height, or give it back.
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+          withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+        }
+        .onChange(of: model.uploads.isEmpty) { _ in
           withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
         }
       }
