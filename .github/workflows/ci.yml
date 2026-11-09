@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
+      # Both libraries build on macOS: CNCTUI's screen is iOS only, and what is left of it here — the
+      # theme, the words, text direction, the fixture — is tested here too.
       - run: swift build
       - run: swift test
 
@@ -35,8 +37,24 @@ jobs:
           print(next(d['udid'] for runtime, items in devices.items() if 'iOS' in runtime for d in items if d['name'].startswith('iPhone')))
           ")"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
-      - name: Test on the simulator
-        run: xcodebuild test -scheme CNCT -destination "id=${{ steps.sim.outputs.udid }}"
+          xcrun simctl list devices available | grep "$udid"
+      - name: Schemes
+        run: xcodebuild -list
+      # Every test target, CNCTUI's included, on the simulator. The screenshot test renders the
+      # fixture conversation with the real screen and writes the PNGs where this says.
+      - name: Test on the simulator, and render the screenshots
+        env:
+          TEST_RUNNER_CNCT_SCREENSHOTS_DIR: ${{ github.workspace }}/screenshots
+        run: |
+          mkdir -p "$TEST_RUNNER_CNCT_SCREENSHOTS_DIR"
+          xcodebuild test -scheme CNCT-Package -destination "id=${{ steps.sim.outputs.udid }}"
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/*.png
+          if-no-files-found: error
 
   example:
     name: Example app

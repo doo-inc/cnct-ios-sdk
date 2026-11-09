@@ -2,6 +2,39 @@
 
 ## Unreleased — 1.0.0
 
+### A ready-made chat screen (`CNCTUI`, new)
+
+A second library in the same package, on the headless client and nothing else. An app that wants
+only the headless client installs only `CNCT`.
+
+- `CnctChatView` (SwiftUI) and `CnctChatViewController` (UIKit), on a `CnctChatClient` or an inbox's
+  public key (the visitor's session then kept in the Keychain), with the options every CNCT SDK
+  shares: `theme`, `language`, `strings`, `identity`, `onClose`, `onEvent` (`CnctChatUIEvent`).
+- **Theming**: `CnctChatTheme` with the shared token names — `primary`, `onPrimary`, `background`,
+  `surface`, `text`, `textMuted`, `border`, `visitorBubble` / `onVisitorBubble`, `agentBubble` /
+  `onAgentBubble`, `cornerRadius`, `font`, `logo`, `title`, `appearance`, `showPoweredBy` — with
+  separate light and dark palettes. Precedence: the app, then the inbox's widget settings, then the
+  defaults. `onPrimary` follows the hosted page's contrast rule.
+- **Arabic and right to left**: every word of the interface in English and Arabic, from the shared
+  `strings.json` (bundled as `Localizable.strings`, with a test that they match it), overridable per
+  key. Arabic mirrors the whole screen through the layout direction; every piece of somebody's text
+  takes its own direction from its first strong character; phone numbers, emails and web addresses
+  stay left to right; digits are Latin.
+- **The conversation**: grouped runs signed with a face and a first name, the system's lines
+  centred, days, times, links, quotes, flow choices as buttons or rows (tapping sends the title with
+  `replyId`), suggestion chips, the typing dots, a dimmed pending message and a failed one with a
+  retry, an offline banner, "Seen", the name card, the rating card, and "Start a new conversation".
+- **Files**: the photo library (several at once, no permission), the camera, and Files; chips with a
+  thumbnail, name, size, a progress ring and a remove button; refused with a sentence before upload;
+  send waits for uploads. Photos inline with their own shape and full screen with pinch to zoom;
+  everything else as a card that opens in Quick Look.
+- Dynamic Type throughout, VoiceOver labels in the chat's language on every control and message,
+  44-point targets, the composer above the keyboard.
+- `CnctChatFixture` and `CnctChatView(fixture:)`: the spec's scripted conversation through a fake
+  transport and socket, for previews, screenshots and a demo with no key.
+- CI renders the fixture on the iOS Simulator — English and Arabic, light, dark and a custom theme —
+  and uploads the PNGs as the `screenshots` artifact.
+
 ### The rest of the visitor API (`CNCT`)
 
 Everything the hosted chat page does, now in the headless client, so the SDK stops lagging it.
