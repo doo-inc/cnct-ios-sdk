@@ -43,7 +43,7 @@ error type.
   `CnctSocket` / `CnctSocketFactory`. Ports `lib/src/chat/` and both chat test files, plus the 1.0
   visitor API from the spec: widget/team/availability, the full message (sender, flow, suggestions,
   replyTo), `upload` (HEIC → JPEG and 2560 px with ImageIO, checks before upload), `identify`,
-  `conversations` / `conversation`, `markRead`, `rate`, `updateProfile`, `chat.message.updated`,
+  `conversations` / `conversation`, `read`, `choose`, `ensureSession`, `rate`, `updateProfile`, `chat.message.updated`,
   `chat.read`.
 - **Chat UI** (`Sources/CNCTUI`): `CnctChatView` / `CnctChatViewController`, `CnctChatTheme`,
   `CnctChatLanguage` / `CnctChatStrings` / `CnctChatWords`, `CnctBidi`, `CnctChatRow` (the thread as

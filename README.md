@@ -459,10 +459,11 @@ of your own. Sending is [`upload` then `send`](#attachments).
 ### The rest of the visitor API
 
 ```swift
-try await chat.startIfNeeded()                    // for an inbox that lets visitors type first
+try await chat.ensureSession()                    // for an inbox that lets visitors type first
 let past = try await chat.conversations()         // up to 50, newest first, each with its last message
 let one = try await chat.conversation(past[0].id) // with its messages
-await chat.markRead()                             // the team's reply is on screen; each reply once
+try await chat.choose(flow.choices[0])            // a flow's choice: its title, with its id as replyId
+await chat.read()                                 // the team's reply is on screen; each reply once
 try await chat.rate(5, comment: "Quick and kind") // once the conversation has closed
 try await chat.updateProfile(displayName: "Layla")
 ```
@@ -641,7 +642,8 @@ offline. One suite opens a real WebSocket on the loopback interface to prove the
 close codes included; the Keychain suite skips itself where the test process has no Keychain. The
 screen's theme, words, text direction and rows are tested everywhere the headless client is; the
 screen itself is tested on the simulator, where `ScreenshotTests` also renders the scripted
-conversation — `{en, ar} × {light, dark}` and `{en, ar}` with a custom theme — to
+conversation — `{en, ar} × {light, dark}`, `{en, ar}` with a custom theme, and `{en, ar}` ended, at the
+name form and at the largest text size — to
 `$CNCT_SCREENSHOTS_DIR` (pass it to `xcodebuild` as `TEST_RUNNER_CNCT_SCREENSHOTS_DIR`), or to
 `cnct-screenshots` in the simulator's temporary directory.
 
