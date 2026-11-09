@@ -225,7 +225,7 @@ public actor CnctChatClient {
   /// For an inbox that lets visitors type first: the conversation starts with their first message
   /// or their first file, whichever comes first, and the two share one start rather than racing to
   /// make two. A no-op while a live conversation is open.
-  public func startIfNeeded(displayName: String? = nil, phone: String? = nil) async throws {
+  public func ensureSession(displayName: String? = nil, phone: String? = nil) async throws {
     if token != nil, let conversation = current.conversation, conversation.isLive,
       current.status != .idle, current.status != .ended
     {
@@ -362,6 +362,14 @@ public actor CnctChatClient {
     }
   }
 
+  /// Answer a flow's question by tapping one of its choices: the choice's title goes as the
+  /// visitor's words and its id as `replyId`, so the flow follows the button exactly rather than
+  /// reading the title as typing. The server keeps the id only if this conversation was offered it.
+  @discardableResult
+  public func choose(_ choice: CnctChatFlow.Choice) async throws -> CnctChatMessage {
+    try await send(choice.title, replyId: choice.id)
+  }
+
   /// Re-send a message that failed. The same `clientKey`, so the server cannot write it twice.
   @discardableResult
   public func retry(_ clientKey: String) async throws -> CnctChatMessage {
@@ -401,14 +409,14 @@ public actor CnctChatClient {
   /// report waits for a newer one. A report that fails is forgotten, so the next call retries it.
   /// Answers whether anything was sent.
   @discardableResult
-  public func markRead() async -> Bool {
+  public func read() async -> Bool {
     guard token != nil, let conversation = current.conversation, !conversation.id.isEmpty,
       let reply = current.messages.last(where: \.isReply)
     else { return false }
     if reportedRead[conversation.id] == reply.id { return false }
     reportedRead[conversation.id] = reply.id
     do {
-      try await markRead(conversationId: conversation.id)
+      try await read(conversationId: conversation.id)
       return true
     } catch {
       if reportedRead[conversation.id] == reply.id { reportedRead[conversation.id] = nil }
@@ -416,9 +424,9 @@ public actor CnctChatClient {
     }
   }
 
-  /// The raw call behind ``markRead()``, for any of this visitor's conversations: `204`, nothing to
+  /// The raw call behind ``read()``, for any of this visitor's conversations: `204`, nothing to
   /// read back.
-  public func markRead(conversationId: String) async throws {
+  public func read(conversationId: String) async throws {
     try await loadToken()
     guard token != nil else { throw CnctError("Start a conversation first.", code: .noSession) }
     _ = try await transport.post(
