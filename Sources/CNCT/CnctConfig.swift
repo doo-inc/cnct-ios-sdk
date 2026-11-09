@@ -35,7 +35,7 @@ public typealias CnctLogger = @Sendable (_ level: CnctLogLevel, _ message: Strin
 public struct CnctConfig: Sendable {
   /// The version this SDK reports in its `User-Agent`. The release workflow refuses a tag that does
   /// not match it.
-  public static let sdkVersion = "0.1.0"
+  public static let sdkVersion = "1.0.0"
 
   /// The CNCT host, with an optional path prefix. Defaults to ``CnctHosts/production``.
   ///

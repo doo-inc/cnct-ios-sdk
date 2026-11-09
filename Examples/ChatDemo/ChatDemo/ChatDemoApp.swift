@@ -1,23 +1,24 @@
 import CNCT
+import CNCTUI
 import SwiftUI
 
 @main
 struct ChatDemoApp: App {
-  /// Made once, here, rather than in a view: the client holds the socket and the session, and a view
-  /// that SwiftUI rebuilds must not rebuild those with it.
-  private let chat: CnctChatClient?
+  /// Made once, here, rather than in a view: a client holds the socket and the session, and a view
+  /// that SwiftUI rebuilds must not rebuild those with it. Nil without a key — the demo then runs on
+  /// the scripted conversation.
+  private let live: CnctChatClient?
+
+  /// The scripted conversation for the "Your own UI" tab in fixture mode: no key, no network.
+  private let fixture = CnctChatFixture.client(language: .en)
 
   init() {
-    chat = Self.makeChat()
+    live = Self.makeChat()
   }
 
   var body: some Scene {
     WindowGroup {
-      if let chat {
-        ChatScreen(chat: chat)
-      } else {
-        MissingKey()
-      }
+      DemoRoot(live: live, fixture: fixture)
     }
   }
 
@@ -42,20 +43,48 @@ struct ChatDemoApp: App {
   }
 }
 
-private struct MissingKey: View {
+/// Three tabs: the ready-made screen, a screen of your own on the headless client, and the switches.
+struct DemoRoot: View {
+  let live: CnctChatClient?
+  let fixture: CnctChatClient
+
+  @AppStorage("demo.language") private var language = DemoLanguage.auto
+  @AppStorage("demo.appearance") private var appearance = DemoAppearance.system
+  @AppStorage("demo.customTheme") private var customTheme = false
+  @AppStorage("demo.fixture") private var preferFixture = false
+
+  /// With no key there is nothing else to run on.
+  private var usingFixture: Bool { live == nil || preferFixture }
+
   var body: some View {
-    ContentUnavailableView {
-      Label("No inbox key", systemImage: "key")
-    } description: {
-      Text(
-        """
-        Set CNCT_PUBLIC_KEY in Examples/ChatDemo/Local.xcconfig, or pass it to xcodebuild:
-
-        CNCT_PUBLIC_KEY=your-inbox-public-key
-
-        CNCT_BASE_URL is optional: without it the app talks to https://app.doo.ooo.
-        """
+    TabView {
+      chat
+        .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
+      ChatScreen(chat: usingFixture ? fixture : live!)
+        .id(usingFixture)
+        .tabItem { Label("Your own UI", systemImage: "hammer") }
+      DemoSettingsView(
+        language: $language, appearance: $appearance, customTheme: $customTheme, preferFixture: $preferFixture,
+        hasKey: live != nil
       )
+      .tabItem { Label("Settings", systemImage: "gearshape") }
     }
+  }
+
+  /// `CnctChatView`, with the switches applied. The fixture is a conversation in one language, so a
+  /// new language is a new fixture.
+  @ViewBuilder private var chat: some View {
+    if usingFixture {
+      CnctChatView(fixture: language.chat, theme: theme, onEvent: { print("CNCT:", $0) })
+        .id("fixture-\(language.rawValue)")
+    } else if let live {
+      CnctChatView(client: live, theme: theme, language: language.chat, onEvent: { print("CNCT:", $0) })
+    }
+  }
+
+  private var theme: CnctChatTheme {
+    var theme = customTheme ? CnctChatFixture.customTheme : CnctChatTheme()
+    theme.appearance = appearance.chat
+    return theme
   }
 }

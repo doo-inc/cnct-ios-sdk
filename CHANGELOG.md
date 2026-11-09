@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased — 1.0.0
+## 1.0.0 — not yet tagged
+
+The first release, together with the web and Android SDKs from one spec (`docs/chat-ui/SPEC.md`):
+the same option names, theme tokens and words on every platform. Nothing before it was tagged, so
+the 0.1.0 entry below ships here too.
+
+### Breaking, for anyone who built on `main`
+
+- `CnctChatEvent` has two new cases, `.messageUpdated` and `.read`. A `switch` over it with no
+  `default` needs them.
+- `CnctConfig.sdkVersion` is `1.0.0`, and with it the `User-Agent`.
 
 ### A ready-made chat screen (`CNCTUI`, new)
 
@@ -78,7 +88,7 @@ Everything the hosted chat page does, now in the headless client, so the SDK sto
 - Session starts and resumes send the device's IANA `timezone`.
 - `CnctTransport.upload(_:body:contentType:headers:progress:)`.
 
-## Unreleased — 0.1.0
+## 0.1.0 — never tagged
 
 - The foundation, matching the Flutter and web SDKs at 0.2.0: `Cnct`, `CnctConfig` (production
   `https://app.doo.ooo` by default, path prefixes kept, the socket origin derived), `CnctHosts`,

@@ -1,17 +1,23 @@
 # CNCT for iOS
 
-The official CNCT SDK for iOS and Swift. Live chat, bookings and tickets against a CNCT workspace,
-using the credentials CNCT issues you.
+The official CNCT SDK for iOS and Swift: a ready-made chat screen you can brand, and the headless
+client underneath it — live chat, bookings and tickets against a CNCT workspace, using the
+credentials CNCT issues you.
 
-> **Status: complete, not yet released.** Live chat, bookings and tickets are here and tested, at
-> parity with the [Flutter SDK](https://github.com/doo-inc/cnct-flutter-sdk) 0.2.0. There is no tag
-> yet; do not depend on `main`.
+> **1.0.0, not yet tagged.** Released together with the [web](https://github.com/doo-inc/cnct-web-sdk)
+> and [Android](https://github.com/doo-inc/cnct-android-sdk) SDKs, from one spec
+> ([`docs/chat-ui/SPEC.md`](docs/chat-ui/SPEC.md)): the same option names, theme tokens and words on
+> every platform.
 
-**It is headless, and that is the whole point.** There is no view in this package and no web view.
-A business building their own app has a design system already; shipping them a chat bubble to
-restyle answers a question they did not ask. So this ships state and events, and the interface is
-yours. [`Examples/ChatDemo`](Examples/ChatDemo) is a complete SwiftUI chat screen built on it, in a
-few hundred lines you own and can delete. It has no dependencies either: Foundation only.
+Two libraries in one package, and no dependencies:
+
+| Library  | What it is | Needs |
+| -------- | ---------- | ----- |
+| `CNCTUI` | **The chat screen**: SwiftUI `CnctChatView` and UIKit `CnctChatViewController`. Branded from the CNCT console or from code, English and Arabic, photos and files both ways. | iOS 15 |
+| `CNCT`   | **The headless client**: state and events, for a business that already has a design system and wants its own screen. Foundation only. | iOS 15, macOS 12 |
+
+The screen is built only on the headless client's public API, so whatever it does, your own screen
+can do too.
 
 Sister SDKs, same concepts and the same error codes:
 [web](https://github.com/doo-inc/cnct-web-sdk) ·
@@ -20,15 +26,241 @@ Sister SDKs, same concepts and the same error codes:
 
 ## Install
 
-Swift Package Manager. In Xcode, **File → Add Package Dependencies…** and paste the repository URL,
-or in `Package.swift`:
+Swift Package Manager. In Xcode, **File → Add Package Dependencies…**, paste the repository URL, and
+add **CNCTUI** for the screen (it brings `CNCT` with it) or **CNCT** alone for the headless client.
+In `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/doo-inc/cnct-ios-sdk.git", from: "0.1.0")
+.package(url: "https://github.com/doo-inc/cnct-ios-sdk.git", exact: "1.0.0")
 ```
 
-iOS 15 and macOS 12 or later. Pin a tag once there is one: what a client ships is what their users
-run, and an SDK that moves under a released app is a bug report nobody can reproduce.
+```swift
+.target(name: "YourApp", dependencies: [.product(name: "CNCTUI", package: "cnct-ios-sdk")])
+```
+
+Pin the version: what a client ships is what their users run, and an SDK that moves under a released
+app is a bug report nobody can reproduce.
+
+If you offer the camera — the screen does wherever the device has one — your app's `Info.plist` needs
+`NSCameraUsageDescription`. The photo library and Files need no permission: the system pickers hand
+over only what the visitor chooses.
+
+## Chat UI in 10 lines
+
+```swift
+import CNCTUI
+import SwiftUI
+
+struct SupportView: View {
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    CnctChatView(publicKey: try! CnctChatPublicKey("your-inbox-public-key"), onClose: { dismiss() })
+  }
+}
+```
+
+That is the whole integration. The screen boots the inbox, picks up the visitor's conversation from
+the Keychain if they have been here before, asks for a name first if the inbox wants one, and draws
+everything from there: the team's faces and first names, the assistant's choices and suggestions,
+photos and files both ways, "Seen", the rating card when it ends. Colours, logo, language, whether
+files are allowed and whether to ask for a rating all come from the inbox's settings in the CNCT
+console — change them there and the app follows, with no release.
+
+From UIKit:
+
+```swift
+let chat = CnctChatViewController(publicKey: try CnctChatPublicKey("your-inbox-public-key")) { [weak self] in
+  self?.dismiss(animated: true)
+}
+present(chat, animated: true)
+```
+
+Every entry point takes the same options, named the same in every CNCT SDK:
+
+| Option     | What it is | Default |
+| ---------- | ---------- | ------- |
+| `client` / `publicKey` | A `CnctChatClient` you made and keep, or the inbox's public key (the screen then makes the client, with the Keychain store, and lets it go with the screen) | required |
+| `theme`    | `CnctChatTheme` — see [Theming](#theming) | the console's settings, then the defaults |
+| `language` | `.auto`, `.en` or `.ar` | the console's `brand.language`, then the device |
+| `strings`  | `CnctChatStrings(en: [...], ar: [...])`: your own words for any key of the [shared table](docs/chat-ui/strings.json) | none |
+| `identity` | `CnctChatIdentity` — see [Signed-in users](#signed-in-users) | anonymous |
+| `onClose`  | Shows a close button in the header, and is called when it is tapped | no button |
+| `onEvent`  | `CnctChatUIEvent`: `.opened`, `.started`, `.sent`, `.attachmentSent(count:)`, `.ended`, `.rated(score:)` — for analytics, never carrying what anybody wrote | none |
+
+`CnctChatView(fixture: .ar)` is the same screen on a scripted conversation, with no key and no
+network — for SwiftUI previews and demos.
+
+## Theming
+
+**Precedence: what the app passes, then the inbox's widget settings on the server, then the built-in
+defaults.** Every token is optional, so a business can brand its chat from the CNCT console with no
+code at all, or pin any part of it in code:
+
+```swift
+CnctChatView(
+  client: chat,
+  theme: CnctChatTheme(
+    primary: "#D7262E",
+    cornerRadius: 8,
+    font: .named("Georgia"),
+    logo: .image(from: UIImage(named: "Logo")!),
+    title: "Help",
+    appearance: .system
+  )
+)
+```
+
+| Token             | Meaning | Default |
+| ----------------- | ------- | ------- |
+| `primary`         | Brand colour: send button, links, header accent | the console's `brand.color`, else `#b52d93` |
+| `onPrimary`       | Text and icons on `primary` | black or white, whichever reads (the hosted chat's luminance rule) |
+| `background`      | The screen | light `#ffffff` / dark `#0f1115` |
+| `surface`         | Header, composer, cards | light `#f6f7f9` / dark `#171a21` |
+| `text`            | Main text | light `#111418` / dark `#eef0f3` |
+| `textMuted`       | Timestamps, hints | light `#5b6573` / dark `#9aa3af` |
+| `border`          | Dividers, outlines | light `#e3e6ea` / dark `#2a2f38` |
+| `visitorBubble` / `onVisitorBubble` | The customer's own messages | `primary` / `onPrimary` |
+| `agentBubble` / `onAgentBubble`     | The team's and the assistant's messages | `surface` / `text` |
+| `cornerRadius`    | Bubbles and cards | 18 |
+| `font`            | `.system`, or `.named("…")` — scales with Dynamic Type either way | system |
+| `logo`            | `.url(…)` or `.image(…)` for the header | the console's logo, else the business's first letter on `primary` |
+| `title`           | Header title | the business's name |
+| `appearance`      | `.light`, `.dark` or `.system` | the console's `brand.appearance` (`auto` is `.system`) |
+| `showPoweredBy`   | The "Powered by CNCT" line | the console's `brand.showBranding` |
+
+Light and dark each have their own colours. `CnctChatTheme(primary:…)` sets a token for both; to
+differ, set it on one:
+
+```swift
+var theme = CnctChatTheme(primary: "#0057b8")
+theme.dark.primary = "#7cb7ff"
+theme.dark.background = "#000000"
+```
+
+Colours are `CnctChatColor`: a hex literal, or `CnctChatColor(UIColor)` / `CnctChatColor(Color)`.
+
+## Arabic and right to left
+
+Every word of the interface is in English and Arabic — the [shared table](docs/chat-ui/strings.json),
+the same 129 keys in every CNCT SDK, bundled as `Localizable.strings`. `language: .auto` takes the
+first of the device's preferred languages that is Arabic or English, else English. A word missing
+from Arabic falls back to English, never to its key.
+
+- **Arabic mirrors the whole screen** through SwiftUI's layout direction: header, composer, which
+  side the bubbles sit on (the visitor's own are always on the trailing side), the send and chevron
+  icons, the upload rings.
+- **Each piece of somebody's text takes its own direction** from its first strong character,
+  whatever the interface's: an Arabic message in an English chat reads right to left, and the
+  reverse. The same goes for names, the greeting, choices, file names and quotes.
+- **Phone numbers, emails and web addresses stay left to right** inside Arabic text, so "+973 3311
+  2233" never comes out as "2233 3311 +973".
+- **Digits are Latin** in Arabic (`ar-u-nu-latn`), as Gulf apps write them. Times and dates are in the
+  chat's language and the visitor's own clock.
+- Choosing a language never changes the business's own words — the greeting, a flow's text and
+  everything the team writes are shown as written.
+
+Your own words for any key, per language:
+
+```swift
+CnctChatView(client: chat, strings: CnctChatStrings(
+  en: ["writeMessage": "Ask us anything…"],
+  ar: ["writeMessage": "اسألنا عن أي شيء…"]
+))
+```
+
+Three words only a phone needs are outside the shared table, overridable the same way:
+`attachPhotos`, `attachCamera` and `attachFiles`, for the attach menu.
+
+## Attachments
+
+The screen's paperclip offers the photo library (several at once), the camera and Files; picked
+files wait above the composer with a thumbnail, their size and an upload ring, and send waits for
+them. Photos show inline in their own shape and open full screen with pinch to zoom; everything else
+is a card that opens in Quick Look. The paperclip is there when the inbox's `chat.allowAttachments`
+is.
+
+Headless, it is two steps — upload each file, then send their ids:
+
+```swift
+let photo = try await chat.upload(CnctUploadFile(data: data, filename: "IMG_0001.HEIC")) { progress in
+  print(progress) // 0…1, per file, on a background queue
+}
+try await chat.send("Here it is", attachments: [photo])
+```
+
+| Limit | |
+| ----- | --- |
+| Files per message | 10 |
+| Size per file | 50 MB |
+| Images | `image/jpeg`, `image/png`, `image/webp`, `image/gif` |
+| Audio | `audio/aac`, `audio/mpeg`, `audio/ogg`, `audio/mp4`, `audio/amr` |
+| Video | `video/mp4`, `video/3gpp`, `video/quicktime` |
+| Documents | PDF, Word (`.doc`, `.docx`), Excel (`.xlsx`), `text/plain`, `text/csv` |
+
+**HEIC is not among them**, and an iPhone takes photos in HEIC — so `upload` converts HEIC and HEIF
+to JPEG first, and scales any photo over 2560 px on its long side down to it (JPEG at 0.85, never
+upscaled, orientation applied, location and other metadata left behind). Everything else is sent
+exactly as picked. Then it checks the limits on the device, so a refusal is a sentence before the
+upload rather than after a minute of it: `too_many`, `too_large`, `unsupported_type`. The server's
+own refusals arrive as `attachments_disabled` (the inbox, or the deployment, takes no files),
+`conversation_closed`, `too_large` and `unsupported_type`. `CnctChatAttachments.check` and
+`.prepare` are public, for a screen of your own.
+
+## Signed-in users
+
+If your app has accounts, sign the visitor in: their conversations follow them to a new phone, and a
+chat they started anonymously before signing in moves across.
+
+```swift
+CnctChatView(client: chat, identity: CnctChatIdentity(
+  userId: user.id,
+  userHash: hashFromYourServer,   // never computed in the app
+  name: user.firstName,
+  email: user.email
+))
+```
+
+Headless, it is `try await chat.identify(identity)`, then `resume()`. A failed identify — `409` when
+the inbox has no identity secret set up, `401` when the hash does not verify — leaves the visitor in
+an ordinary anonymous chat; the screen logs it for you and carries on.
+
+`userHash` is `HMAC-SHA256(userId, the inbox's identity secret)` in lowercase hex, and it is
+**computed on your own server**:
+
+```js
+// Node, on your server. The secret is in the CNCT console, in the inbox's settings.
+import { createHmac } from 'node:crypto';
+
+app.get('/cnct-identity', requireSignedIn, (req, res) => {
+  const userId = String(req.user.id);
+  const userHash = createHmac('sha256', process.env.CNCT_IDENTITY_SECRET)
+    .update(userId)
+    .digest('hex');
+  res.json({ userId, userHash, name: req.user.firstName, email: req.user.email });
+});
+```
+
+> **The identity secret never goes in an app.** It is what stops anybody from claiming to be
+> anybody: whoever holds it can sign in as any of your users. An app binary is not a place to keep a
+> secret — it is unpacked in minutes. The app asks your server for the hash once the user has signed
+> in, and passes it on.
+
+Printing a `CnctChatIdentity` never prints the hash.
+
+## Accessibility
+
+Every text scales with Dynamic Type, to the largest sizes. Every control and message has a VoiceOver
+label in the chat's language — "Sara: Thanks, here is your invoice.", "You: Photo, photo.jpg,
+1.2 MB" — and touch targets are 44 points. The default colours keep text at 4.5:1 or better in light
+and dark. On a phone the composer rides above the keyboard, and the newest message stays in sight
+when the keyboard opens.
+
+---
+
+# The headless client
+
+Everything below is `CNCT`: the client the screen is built on, for an app that draws its own.
 
 ## The host
 
@@ -207,22 +439,40 @@ work.
 
 ### Identity
 
-A visitor is anonymous until they volunteer a phone number. If your app has already signed this
-person in, **pass the number you hold**: it is the difference between a thread that joins their
-history and one that starts a second record for them.
+A visitor is anonymous until they volunteer a phone number or your app signs them in. If your app
+has already signed this person in, use [`identify`](#signed-in-users) — their conversations then
+follow them between devices. Without identity verification set up, **pass the number you hold**: it
+is the difference between a thread that joins their history and one that starts a second record for
+them.
 
 ```swift
 try await chat.start(displayName: user.name, phone: user.phone)
 ```
 
-There is no signed identity handshake yet — no `setUser` with an HMAC — so this is the honest weak
-spot of the channel, and `start(phone:)` is the way around it today.
-
 ### Files
 
-An operator's attachments are served only to the visitor's own session, so a plain `AsyncImage`
-would be refused. `chat.downloadAttachment(id)` answers the bytes; `chat.attachmentRequest(id)`
-answers a `URLRequest` carrying the session header, for an image loader of your own.
+Attachments are served only to the visitor's own session, so a plain `AsyncImage` would be refused.
+`chat.downloadAttachment(id)` answers the bytes and keeps them in memory by id;
+`chat.attachmentRequest(id)` answers a `URLRequest` carrying the session header, for an image loader
+of your own. Sending is [`upload` then `send`](#attachments).
+
+### The rest of the visitor API
+
+```swift
+try await chat.startIfNeeded()                    // for an inbox that lets visitors type first
+let past = try await chat.conversations()         // up to 50, newest first, each with its last message
+let one = try await chat.conversation(past[0].id) // with its messages
+await chat.markRead()                             // the team's reply is on screen; each reply once
+try await chat.rate(5, comment: "Quick and kind") // once the conversation has closed
+try await chat.updateProfile(displayName: "Layla")
+```
+
+`state.inbox` carries the console's `widget` settings, the `team` and the `availability`;
+`availability.line` is the "usually replies in a few minutes" sentence, as a value. Messages carry
+their `sender` (a first name and a face), `flow` (choices to tap, with `replyId`), `suggestions`
+and `replyTo`; `state.awaitingFlow`, `offeredSuggestions` and `seenMessageId` say which to show.
+`chat.message.updated` and `chat.read` arrive as `.messageUpdated` and `.read` events, already in
+`state`.
 
 ---
 
@@ -363,33 +613,40 @@ message. The socket counts the same thirty the HTTP path does, so moving between
 
 ## The example app
 
-[`Examples/ChatDemo`](Examples/ChatDemo) is a SwiftUI app — a chat screen with bubbles, cards,
-attachments, a retry button and a typing line — on the headless client and the Keychain store. It
-builds against the package in this repository, so it is always the SDK as it is on the branch.
+[`Examples/ChatDemo`](Examples/ChatDemo) is an app with three tabs: **Chat** (`CnctChatView`),
+**Your own UI** (a SwiftUI screen on the headless client), and **Settings** — switches for the
+language, the appearance and the custom theme, and a **fixture mode** that plays the scripted
+conversation with no key and no network. It builds against the package in this repository, so it is
+always the SDK as it is on the branch.
 
 ```sh
-echo 'CNCT_PUBLIC_KEY = your-inbox-public-key' > Examples/ChatDemo/Local.xcconfig
-open Examples/ChatDemo/ChatDemo.xcodeproj
+open Examples/ChatDemo/ChatDemo.xcodeproj   # runs in fixture mode with no key
+echo 'CNCT_PUBLIC_KEY = your-inbox-public-key' > Examples/ChatDemo/Local.xcconfig   # a real inbox
 ```
 
-iOS 17, for `@Observable`; the SDK itself needs only iOS 15. See its
-[README](Examples/ChatDemo/README.md).
+See its [README](Examples/ChatDemo/README.md).
 
 ## Development
 
 ```sh
-swift test                                                   # macOS, no simulator
-xcodebuild test -scheme CNCT -destination 'platform=iOS Simulator,name=iPhone 16'
+swift test                                                    # macOS or Linux, no simulator
+xcodebuild test -scheme CNCT-Package -destination 'platform=iOS Simulator,name=iPhone 16'
 xcodebuild build -project Examples/ChatDemo/ChatDemo.xcodeproj -scheme ChatDemo \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+python3 scripts/generate-strings.py                           # after changing docs/chat-ui/strings.json
 ```
 
 The tests run against fakes — a `URLProtocol` that answers HTTP, and a fake socket — so the suite is
 offline. One suite opens a real WebSocket on the loopback interface to prove the URLSession socket,
-close codes included; the Keychain suite skips itself where the test process has no Keychain.
+close codes included; the Keychain suite skips itself where the test process has no Keychain. The
+screen's theme, words, text direction and rows are tested everywhere the headless client is; the
+screen itself is tested on the simulator, where `ScreenshotTests` also renders the scripted
+conversation — `{en, ar} × {light, dark}` and `{en, ar}` with a custom theme — to
+`$CNCT_SCREENSHOTS_DIR` (pass it to `xcodebuild` as `TEST_RUNNER_CNCT_SCREENSHOTS_DIR`), or to
+`cnct-screenshots` in the simulator's temporary directory.
 
-CI runs all three on every pull request. A tag `vX.Y.Z` must match `CnctConfig.sdkVersion`, or the
-release workflow refuses it.
+CI runs all of it on every pull request and uploads the PNGs as the **`screenshots`** artifact. A tag
+`vX.Y.Z` must match `CnctConfig.sdkVersion` and the CHANGELOG, or the release workflow refuses it.
 
 ## Versioning
 
