@@ -39,10 +39,11 @@
             )
             .frame(height: height)
             if model.draft.isEmpty {
+              // Wraps rather than truncates at the large text sizes, and the box grows with it.
               Text(placeholder)
                 .font(theme.font(.body))
                 .foregroundColor(theme.textMuted.color)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
@@ -209,13 +210,17 @@
     @Environment(\.cnctWords) var words
     @Environment(\.cnctFormat) var format
     @Environment(\.layoutDirection) var direction
+    @Environment(\.dynamicTypeSize) var typeSize
 
     var body: some View {
       HStack(spacing: 8) {
         thumbnail
         VStack(alignment: .leading, spacing: 2) {
-          CnctUserText(text: upload.filename, style: .footnote, weight: .medium, color: theme.text, lineLimit: 1)
-            .frame(maxWidth: 140, alignment: .leading)
+          CnctUserText(
+            text: upload.filename, style: .footnote, weight: .medium, color: theme.text,
+            lineLimit: typeSize.isAccessibilitySize ? 3 : 1
+          )
+          .frame(maxWidth: typeSize.isAccessibilitySize ? 200 : 140, alignment: .leading)
           Text(status)
             .font(theme.font(.caption2))
             .foregroundColor(upload.status == .failed ? theme.danger.color : theme.textMuted.color)
