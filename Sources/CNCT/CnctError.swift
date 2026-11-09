@@ -112,6 +112,14 @@ public struct CnctErrorCode: RawRepresentable, Hashable, Sendable, ExpressibleBy
   /// A tool declined, in a sentence rather than a status code. The platform answers `200` with an
   /// `error` key when it will not do something, and this is that, raised.
   public static let toolRefused: CnctErrorCode = "tool_refused"
+  /// More files than a message can carry — ten. Checked before anything is uploaded.
+  public static let tooMany: CnctErrorCode = "too_many"
+  /// A kind of file the chat does not take. Checked before upload, and what a `422` from the
+  /// attachments endpoint becomes.
+  public static let unsupportedType: CnctErrorCode = "unsupported_type"
+  /// This inbox takes no files (`403` from the attachments endpoint), or this deployment keeps none
+  /// (`503`). Neither is worth retrying; hide the attach button.
+  public static let attachmentsDisabled: CnctErrorCode = "attachments_disabled"
   /// The device would not keep or hand back the visitor's session token — the Keychain refused,
   /// most often because the device has not been unlocked since it started. Nothing reached a server.
   public static let storageFailed: CnctErrorCode = "storage_failed"

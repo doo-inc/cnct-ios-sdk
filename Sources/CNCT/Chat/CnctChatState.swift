@@ -71,6 +71,55 @@ public struct CnctChatState: Sendable, Hashable {
 
   /// Messages that failed to send and are waiting for a retry.
   public var failed: [CnctChatMessage] { messages.filter(\.failed) }
+
+  /// True while the conversation can still be written in — none yet counts, because the first
+  /// message is what starts one.
+  public var isLive: Bool { status != .ended && conversation?.status != .closed }
+
+  /// **The flow message waiting for an answer, if one is**: the last thing said, from the
+  /// assistant, drawn as a flow, with choices to tap or an ``CnctChatFlow/expects`` that picks the
+  /// keyboard. Nil the moment anybody says anything else, and on a conversation that has ended —
+  /// once a question is answered its choices go, as quick replies do everywhere.
+  public var awaitingFlow: CnctChatMessage? {
+    guard isLive, let last = messages.last, last.speaker == .ai, !last.pending,
+      let flow = last.flow, flow.drawsAsFlow, !flow.choices.isEmpty || flow.expects != nil
+    else { return nil }
+    return last
+  }
+
+  /// Replies the assistant offered with its last answer, to show as chips. Read back over the
+  /// assistant's trailing messages, because pictures it sends after its words arrive as messages of
+  /// their own and carry none. Empty once anybody else speaks, beside a flow's choices (one row of
+  /// answers to tap at a time), and on a conversation that has ended.
+  public var offeredSuggestions: [String] {
+    guard isLive, awaitingFlow?.flow?.choices.isEmpty ?? true else { return [] }
+    for message in messages.reversed() {
+      guard message.speaker == .ai else { break }
+      if !message.suggestions.isEmpty { return message.suggestions }
+    }
+    return []
+  }
+
+  /// The visitor's last message, when it is the last thing said and the team has read it — where a
+  /// UI writes "Seen". Nil after a reply: the reply says it better.
+  public var seenMessageId: String? {
+    guard let last = messages.last, last.speaker == .caller, !last.pending, !last.failed, !last.id.isEmpty,
+      let seenAt = conversation?.seenAt, seenAt >= last.createdAt
+    else { return nil }
+    return last.id
+  }
+}
+
+/// One conversation and everything said in it — what ``CnctChatClient/conversation(_:)`` answers.
+public struct CnctChatTranscript: Sendable, Hashable {
+  public let conversation: CnctChatConversation
+  /// Oldest first.
+  public let messages: [CnctChatMessage]
+
+  public init(conversation: CnctChatConversation, messages: [CnctChatMessage]) {
+    self.conversation = conversation
+    self.messages = messages
+  }
 }
 
 extension CnctChatState: CustomStringConvertible {
@@ -97,6 +146,14 @@ public enum CnctChatEvent: Sendable, Hashable {
 
   /// A message arrived. Already in ``CnctChatState/messages`` by the time this is emitted.
   case messageReceived(CnctChatMessage)
+
+  /// A message already in ``CnctChatState/messages`` changed — edited, deleted, or a file it carries
+  /// finished storing — and was replaced where it stands.
+  case messageUpdated(CnctChatMessage)
+
+  /// The team read the visitor's messages up to this instant. Also in
+  /// ``CnctChatConversation/seenAt``.
+  case read(Date)
 
   /// The other side is typing.
   case typingReceived

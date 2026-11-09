@@ -48,8 +48,28 @@ public final class CnctTransport: Sendable {
   public func bytes(_ path: String, headers: [String: String] = [:]) async throws -> Data {
     let request = makeRequest("GET", config.resolve(path), headers: headers)
     let (data, status) = try await run(request)
-    if status >= 400 { throw failure(status, data) }
+    if status >= 400 { throw failure(status, data, try? JSONDecoder().decode(CnctJSON.self, from: data)) }
     return data
+  }
+
+  /// Post a body that is not JSON — a file, as `multipart/form-data` — and answer the JSON that
+  /// comes back, with the same error mapping as everything else.
+  ///
+  /// `progress` hears how much of the body has gone, from 0 to 1, as the system sends it, and always
+  /// hears 1 once the server has answered. It is called from a background queue.
+  public func upload(
+    _ path: String,
+    body: Data,
+    contentType: String,
+    headers: [String: String] = [:],
+    progress: (@Sendable (Double) -> Void)? = nil
+  ) async throws -> CnctJSON {
+    var request = makeRequest("POST", config.resolve(path), headers: headers)
+    request.setValue(contentType, forHTTPHeaderField: "content-type")
+    let (data, status) = try await run(request, upload: body, progress: progress)
+    config.logger?(.debug, "POST \(path) → \(status)", nil)
+    progress?(1)
+    return try decode("POST", status, data)
   }
 
   /// Send a request and answer its JSON. An empty body or a `204` answers ``CnctJSON/null``.
@@ -68,7 +88,11 @@ public final class CnctTransport: Sendable {
 
     let (data, status) = try await run(request)
     config.logger?(.debug, "\(method) \(path) → \(status)", nil)
+    return try decode(method, status, data)
+  }
 
+  /// A response's JSON, or the error it carries.
+  private func decode(_ method: String, _ status: Int, _ data: Data) throws -> CnctJSON {
     if status == 204 || data.isEmpty {
       if status >= 400 { throw failure(status, data) }
       return .null
@@ -105,11 +129,15 @@ public final class CnctTransport: Sendable {
 
   /// A data task wrapped by hand rather than `session.data(for:)`, so it behaves the same on every
   /// OS this supports and cancels with the calling task.
-  private func run(_ request: URLRequest) async throws -> (Data, Int) {
+  private func run(
+    _ request: URLRequest,
+    upload body: Data? = nil,
+    progress: (@Sendable (Double) -> Void)? = nil
+  ) async throws -> (Data, Int) {
     let box = TaskBox()
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, Int), any Error>) in
-        let task = session.dataTask(with: request) { data, response, error in
+        let finished: @Sendable (Data?, URLResponse?, (any Error)?) -> Void = { data, response, error in
           if let error {
             continuation.resume(throwing: self.mapNetworkError(error))
             return
@@ -120,6 +148,23 @@ public final class CnctTransport: Sendable {
             return
           }
           continuation.resume(returning: (data ?? Data(), http.statusCode))
+        }
+        let task: URLSessionTask
+        if let body {
+          // The body travels as the upload task's own, which is what the system streams and reports
+          // progress on. Apple's URLSession hands it to a `URLProtocol` — a test's, a debugging
+          // proxy's — as the request's body stream; Linux's hands it nothing, so there it is also
+          // left on the request, where the upload itself ignores it. `Data` is shared, not copied.
+          #if canImport(FoundationNetworking)
+            var request = request
+            request.httpBody = body
+          #endif
+          task = session.uploadTask(with: request, from: body, completionHandler: finished)
+          // A delegate of the task's own, so progress reaches this upload and nothing else — the
+          // session may be `URLSession.shared`, which has no delegate to ask.
+          if let progress { task.delegate = UploadProgress(progress) }
+        } else {
+          task = session.dataTask(with: request, completionHandler: finished)
         }
         box.set(task)
         task.resume()
@@ -191,10 +236,10 @@ public final class CnctTransport: Sendable {
 /// Holds the task so a cancellation that arrives from another thread can reach it.
 private final class TaskBox: @unchecked Sendable {
   private let lock = NSLock()
-  private var task: URLSessionDataTask?
+  private var task: URLSessionTask?
   private var cancelled = false
 
-  func set(_ task: URLSessionDataTask) {
+  func set(_ task: URLSessionTask) {
     lock.lock()
     defer { lock.unlock() }
     self.task = task
@@ -206,5 +251,27 @@ private final class TaskBox: @unchecked Sendable {
     defer { lock.unlock() }
     cancelled = true
     task?.cancel()
+  }
+}
+
+/// Hears how much of an upload's body has gone.
+private final class UploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+  private let report: @Sendable (Double) -> Void
+
+  init(_ report: @escaping @Sendable (Double) -> Void) {
+    self.report = report
+  }
+
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    didSendBodyData bytesSent: Int64,
+    totalBytesSent: Int64,
+    totalBytesExpectedToSend: Int64
+  ) {
+    guard totalBytesExpectedToSend > 0 else { return }
+    // Short of 1: the last byte leaving is not the server having it. The transport says 1 once the
+    // server has answered.
+    report(min(0.99, Double(totalBytesSent) / Double(totalBytesExpectedToSend)))
   }
 }
