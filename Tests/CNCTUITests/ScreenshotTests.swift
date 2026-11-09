@@ -39,6 +39,56 @@
       }
     }
 
+    /// Beyond the six the spec asks for: the screens the fixture's conversation does not reach, and
+    /// the largest text size, where clipping would show.
+    @MainActor
+    func testMoreScreens() throws {
+      let folder = Self.folder()
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+      // Ended, rated four, and the box for more.
+      let ended = CnctChatModel(client: CnctChatFixture.client(language: .en), ownsClient: true, identity: nil, fixture: .en)
+      ended.open()
+      Self.spin { ended.phase == .chat && ended.state.failed.count == 1 }
+      ended.end()
+      Self.spin { ended.state.conversation?.ratable == true }
+      ended.rate(4)
+      try save(
+        render(CnctChatView(model: ended, theme: CnctChatTheme(appearance: .light), language: .en, onClose: {}), height: 1400),
+        "chat-en-ended", to: folder)
+
+      // A stranger, on an inbox that asks for a name first.
+      let intro = CnctChatModel(client: CnctChatFixture.client(language: .ar), ownsClient: true, identity: nil)
+      try save(
+        render(CnctChatView(model: intro, theme: CnctChatTheme(appearance: .light), language: .ar, onClose: {}), height: 844),
+        "chat-ar-intro", to: folder)
+
+      for language in [CnctChatLanguage.en, .ar] {
+        try save(
+          render(
+            CnctChatView(fixture: language, theme: CnctChatTheme(appearance: .light), onClose: {}), height: 2600,
+            textSize: .accessibilityExtraExtraExtraLarge),
+          "chat-\(language.rawValue)-largest-text", to: folder)
+      }
+    }
+
+    @MainActor
+    private func save(_ image: UIImage, _ name: String, to folder: URL) throws {
+      let data = try XCTUnwrap(image.pngData())
+      let url = folder.appendingPathComponent("\(name).png")
+      try data.write(to: url)
+      print("Wrote \(url.path) (\(data.count) bytes)")
+      XCTAssertFalse(Self.isBlank(image), "\(name).png is blank")
+    }
+
+    @MainActor
+    private static func spin(until condition: () -> Bool) {
+      let deadline = Date().addingTimeInterval(6)
+      while Date() < deadline, !condition() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+      }
+    }
+
     @MainActor
     private func render(_ language: CnctChatLanguage, _ look: Look) throws -> UIImage {
       let theme: CnctChatTheme
@@ -47,10 +97,24 @@
       case .dark: theme = CnctChatTheme(appearance: .dark)
       case .custom: theme = CnctChatFixture.customTheme
       }
-      let size = CGSize(width: Self.width, height: Self.height)
-      let controller = UIHostingController(rootView: CnctChatView(fixture: language, theme: theme, onClose: {}))
+      return try render(CnctChatView(fixture: language, theme: theme, onClose: {}), dark: look == .dark)
+    }
+
+    @MainActor
+    private func render(
+      _ view: CnctChatView, height: CGFloat = ScreenshotTests.height, dark: Bool = false,
+      textSize: UIContentSizeCategory? = nil
+    ) throws -> UIImage {
+      let size = CGSize(width: Self.width, height: height)
+      let controller = UIHostingController(
+        rootView: view.environment(\.dynamicTypeSize, textSize == nil ? .large : .accessibility5))
       let window = UIWindow(frame: CGRect(origin: .zero, size: size))
-      window.overrideUserInterfaceStyle = look == .dark ? .dark : .light
+      // SwiftUI's text follows the environment; the composer, a UIKit text view, follows the
+      // window's traits.
+      if #available(iOS 17.0, *) {
+        if let textSize { window.traitOverrides.preferredContentSizeCategory = textSize }
+      }
+      window.overrideUserInterfaceStyle = dark ? .dark : .light
       window.rootViewController = controller
       window.isHidden = false
       controller.view.frame = window.bounds

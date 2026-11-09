@@ -111,6 +111,21 @@
       self.onEvent = onEvent
     }
 
+    /// A screen on a model already made — for the tests that render it in a given state.
+    init(
+      model: CnctChatModel,
+      theme: CnctChatTheme = CnctChatTheme(),
+      language: CnctChatLanguage? = nil,
+      onClose: (() -> Void)? = nil
+    ) {
+      _model = StateObject(wrappedValue: model)
+      self.theme = theme
+      self.language = language
+      self.strings = CnctChatStrings()
+      self.onClose = onClose
+      self.onEvent = nil
+    }
+
     public var body: some View {
       let inbox = model.state.inbox
       let spoken = CnctChatLanguage.pick(app: language, server: inbox?.widget.brand.language)
