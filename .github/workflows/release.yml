@@ -15,12 +15,21 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Check the tag matches CnctConfig.sdkVersion
+      - name: Check the tag matches CnctConfig.sdkVersion, the CHANGELOG and the README
         run: |
           tagged="${GITHUB_REF_NAME#v}"
           reported="$(sed -nE 's/.*static let sdkVersion = "([^"]+)".*/\1/p' Sources/CNCT/CnctConfig.swift)"
           if [ "$tagged" != "$reported" ]; then
             echo "Tag $GITHUB_REF_NAME does not match CnctConfig.sdkVersion $reported." >&2
+            exit 1
+          fi
+          newest="$(grep -m1 '^## ' CHANGELOG.md)"
+          case "$newest" in
+            "## $tagged"*) ;;
+            *) echo "The newest CHANGELOG entry is \"$newest\", not $tagged." >&2; exit 1 ;;
+          esac
+          if ! grep -q "exact: \"$tagged\"" README.md; then
+            echo "The README does not tell people to install $tagged." >&2
             exit 1
           fi
       - run: swift test

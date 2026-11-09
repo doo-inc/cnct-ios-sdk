@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0C7A1000000000000000000C /* CNCT in Frameworks */ = {isa = PBXBuildFile; productRef = 0C7A1000000000000000000D /* CNCT */; };
+		0C7A10000000000000000015 /* CNCTUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0C7A10000000000000000016 /* CNCTUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C7A1000000000000000000C /* CNCT in Frameworks */,
+				0C7A10000000000000000015 /* CNCTUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,6 +88,7 @@
 			name = ChatDemo;
 			packageProductDependencies = (
 				0C7A1000000000000000000D /* CNCT */,
+				0C7A10000000000000000016 /* CNCTUI */,
 			);
 			productName = ChatDemo;
 			productReference = 0C7A10000000000000000004 /* ChatDemo.app */;
@@ -111,6 +114,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ar,
 				Base,
 			);
 			mainGroup = 0C7A10000000000000000002;
@@ -194,6 +198,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ChatDemo/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "CNCT Chat";
+				INFOPLIST_KEY_NSCameraUsageDescription = "To take a photo and send it in the chat.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -220,6 +225,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ChatDemo/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "CNCT Chat";
+				INFOPLIST_KEY_NSCameraUsageDescription = "To take a photo and send it in the chat.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -272,6 +278,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0C7A1000000000000000000E /* XCLocalSwiftPackageReference "../.." */;
 			productName = CNCT;
+		};
+		0C7A10000000000000000016 /* CNCTUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0C7A1000000000000000000E /* XCLocalSwiftPackageReference "../.." */;
+			productName = CNCTUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
