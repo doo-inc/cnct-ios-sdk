@@ -84,6 +84,27 @@ public struct CnctChatColor: Sendable, Hashable, ExpressibleByStringLiteral, Cus
   func opacity(_ alpha: Double) -> CnctChatColor {
     CnctChatColor(red: red, green: green, blue: blue, alpha: self.alpha * alpha)
   }
+
+  /// This colour moved `amount` of the way towards another, channel by channel.
+  func mixed(with other: CnctChatColor, by amount: Double) -> CnctChatColor {
+    let t = min(1, max(0, amount))
+    return CnctChatColor(
+      red: red + (other.red - red) * t, green: green + (other.green - green) * t, blue: blue + (other.blue - blue) * t,
+      alpha: alpha)
+  }
+
+  /// This colour as words: itself where it reads at 4.5:1 or better on every one of `grounds`, and
+  /// otherwise moved, a tenth at a time, towards `ink` until it does. A brand colour chosen for a
+  /// white page is often too dark to read on a dark one.
+  func readable(on grounds: [CnctChatColor], towards ink: CnctChatColor) -> CnctChatColor {
+    var candidate = self
+    var amount = 0.0
+    while amount < 1, grounds.contains(where: { candidate.contrast(with: $0) < 4.5 }) {
+      amount += 0.1
+      candidate = mixed(with: ink, by: amount)
+    }
+    return candidate
+  }
 }
 
 /// Light, dark, or whatever the device is set to.
@@ -285,11 +306,13 @@ public struct CnctChatTheme: Sendable, Hashable {
     let agentBubble = app.agentBubble ?? surface
     let name = (title ?? business).trimmingCharacters(in: .whitespacesAndNewlines)
 
+    let background = app.background ?? base.background!
     return CnctResolvedChatTheme(
       isDark: isDark,
       primary: primary,
       onPrimary: onPrimary,
-      background: app.background ?? base.background!,
+      primaryText: primary.readable(on: [background, surface], towards: text),
+      background: background,
       surface: surface,
       text: text,
       textMuted: app.textMuted ?? base.textMuted!,
@@ -322,6 +345,9 @@ public struct CnctResolvedChatTheme: Sendable, Hashable {
   public let isDark: Bool
   public let primary: CnctChatColor
   public let onPrimary: CnctChatColor
+  /// `primary` for words drawn on the background or a surface — a link, "End chat", a choice —
+  /// adjusted only as far as it must be to read at 4.5:1.
+  public let primaryText: CnctChatColor
   public let background: CnctChatColor
   public let surface: CnctChatColor
   public let text: CnctChatColor

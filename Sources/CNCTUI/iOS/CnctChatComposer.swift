@@ -246,7 +246,7 @@
       switch upload.status {
       case .uploading: return words("uploading")
       case .failed: return words("uploadFailed", ["name": ""]).trimmingCharacters(in: .whitespaces)
-      case .done: return format.size(upload.bytes)
+      case .done: return format.size(upload.attachment?.bytes ?? upload.bytes)
       }
     }
 
@@ -258,7 +258,7 @@
       } else {
         Text(verbatim: Self.fileExtension(upload.filename))
           .font(.system(size: 10, weight: .bold))
-          .foregroundColor(theme.primary.color)
+          .foregroundColor(theme.primaryText.color)
           .frame(width: 40, height: 40)
           .background(shape.fill(theme.primary.opacity(0.12).color))
           .accessibilityHidden(true)

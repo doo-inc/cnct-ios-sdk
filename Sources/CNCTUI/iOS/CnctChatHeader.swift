@@ -33,7 +33,7 @@
         if model.canEnd {
           Button(words("endChat")) { model.confirmingEnd = true }
             .font(theme.font(.subheadline, weight: .semibold))
-            .foregroundColor(theme.primary.color)
+            .foregroundColor(theme.primaryText.color)
             .frame(minHeight: 44)
         }
         if let onClose {

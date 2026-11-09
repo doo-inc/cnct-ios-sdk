@@ -11,7 +11,8 @@
   ///
   /// `{en, ar} × {light, dark}` with the default theme, and `{en, ar}` with the custom one. They are
   /// written to `$CNCT_SCREENSHOTS_DIR` (CI sets it through `TEST_RUNNER_CNCT_SCREENSHOTS_DIR`), or
-  /// to `screenshots/` at the root of the repository.
+  /// to `cnct-screenshots` in the temporary directory — never inside the package, where a new file
+  /// sets Xcode resolving the package graph again under a running test.
   ///
   /// XCTest rather than Swift Testing for this one suite: a screen that boots, loads a photo and
   /// lays itself out needs the main run loop turning while it does, and spinning it is what
@@ -67,12 +68,17 @@
       format.scale = 2
       format.opaque = true
       let renderer = UIGraphicsImageRenderer(size: size, format: format)
-      var image = renderer.image { context in
-        controller.view.layer.render(in: context.cgContext)
-      }
-      if Self.isBlank(image) {
-        image = renderer.image { _ in
-          _ = controller.view.drawHierarchy(in: CGRect(origin: .zero, size: size), afterScreenUpdates: true)
+      // The first frame of a freshly made window is now and then empty — the render server not
+      // ready for it yet. A few more turns of the run loop and it is.
+      var image = renderer.image { context in controller.view.layer.render(in: context.cgContext) }
+      for _ in 0..<5 where Self.isBlank(image) {
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        controller.view.layoutIfNeeded()
+        image = renderer.image { context in controller.view.layer.render(in: context.cgContext) }
+        if Self.isBlank(image) {
+          image = renderer.image { _ in
+            _ = controller.view.drawHierarchy(in: CGRect(origin: .zero, size: size), afterScreenUpdates: true)
+          }
         }
       }
       window.isHidden = true
@@ -84,9 +90,7 @@
       if let path = ProcessInfo.processInfo.environment["CNCT_SCREENSHOTS_DIR"], !path.isEmpty {
         return URL(fileURLWithPath: path, isDirectory: true)
       }
-      return URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("screenshots", isDirectory: true)
+      return FileManager.default.temporaryDirectory.appendingPathComponent("cnct-screenshots", isDirectory: true)
     }
 
     /// True when a picture is one colour all over — a render that drew nothing.

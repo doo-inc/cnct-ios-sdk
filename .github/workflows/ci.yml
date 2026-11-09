@@ -13,6 +13,7 @@ jobs:
   macos:
     name: Package (macOS)
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
@@ -24,6 +25,8 @@ jobs:
   ios:
     name: iOS Simulator
     runs-on: macos-15
+    # A test that hangs should cost half an hour, not the six a job is otherwise allowed.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       # The first available iPhone, by id. Simulator names change with every runner image, and a
@@ -41,10 +44,11 @@ jobs:
       - name: Schemes
         run: xcodebuild -list
       # Every test target, CNCTUI's included, on the simulator. The screenshot test renders the
-      # fixture conversation with the real screen and writes the PNGs where this says.
+      # fixture conversation with the real screen and writes the PNGs where this says — outside the
+      # checkout, because a file appearing inside the package sets Xcode resolving it again.
       - name: Test on the simulator, and render the screenshots
         env:
-          TEST_RUNNER_CNCT_SCREENSHOTS_DIR: ${{ github.workspace }}/screenshots
+          TEST_RUNNER_CNCT_SCREENSHOTS_DIR: ${{ runner.temp }}/screenshots
         run: |
           mkdir -p "$TEST_RUNNER_CNCT_SCREENSHOTS_DIR"
           xcodebuild test -scheme CNCT-Package -destination "id=${{ steps.sim.outputs.udid }}"
@@ -53,12 +57,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
-          path: screenshots/*.png
+          path: ${{ runner.temp }}/screenshots/*.png
           if-no-files-found: error
 
   example:
     name: Example app
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # A build, not a run: it proves the example still compiles against the package as it is on

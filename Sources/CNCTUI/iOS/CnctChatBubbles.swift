@@ -60,7 +60,7 @@
           if group.speaker == .ai {
             Text(verbatim: "AI")
               .font(.system(size: 10, weight: .bold))
-              .foregroundColor(theme.primary.color)
+              .foregroundColor(theme.primaryText.color)
               .padding(.horizontal, 5)
               .padding(.vertical, 1)
               .background(Capsule().fill(theme.primary.opacity(0.14).color))
@@ -99,6 +99,9 @@
       let paper = mine ? theme.visitorBubble : theme.agentBubble
       let text = message.words.trimmingCharacters(in: .whitespacesAndNewlines)
       let onlyFiles = text.isEmpty && !message.attachments.isEmpty
+      // A photo on its own is its own frame; a coloured bubble round it only crowds it.
+      let onlyPictures = onlyFiles && message.replyTo == nil
+        && message.attachments.allSatisfy { $0.kind == .image || $0.mimeType.hasPrefix("image/") }
       VStack(alignment: textAlignment(text), spacing: 8) {
         if let quote = message.replyTo {
           CnctQuoteView(quote: quote, ink: ink)
@@ -107,7 +110,7 @@
           CnctFlowMedia(media: media, ink: ink)
         }
         if !onlyFiles {
-          CnctUserText(text: message.words, color: ink, link: mine ? ink : theme.primary)
+          CnctUserText(text: message.words, color: ink, link: mine ? ink : theme.primaryText)
             .accessibilityLabel(spoken)
         }
         if let footer = message.flow?.footer, message.flow?.drawsAsFlow == true {
@@ -117,12 +120,16 @@
           CnctAttachmentView(model: model, attachment: attachment, ink: ink, signer: signer)
         }
       }
-      .padding(.horizontal, onlyFiles ? 4 : 14)
-      .padding(.vertical, onlyFiles ? 4 : 10)
-      .background(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous).fill(paper.color))
+      .padding(.horizontal, onlyPictures ? 0 : onlyFiles ? 4 : 14)
+      .padding(.vertical, onlyPictures ? 0 : onlyFiles ? 4 : 10)
+      .background(
+        RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+          .fill(onlyPictures ? Color.clear : paper.color)
+      )
       .overlay(
         RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
-          .stroke(message.failed ? theme.danger.color : (mine ? Color.clear : theme.border.color), lineWidth: 1)
+          .stroke(
+            message.failed ? theme.danger.color : (mine || onlyPictures ? Color.clear : theme.border.color), lineWidth: 1)
       )
       .opacity(message.pending ? 0.6 : 1)
     }
@@ -257,7 +264,7 @@
     }
 
     @ViewBuilder private var picture: some View {
-      let shape = RoundedRectangle(cornerRadius: max(4, theme.cornerRadius - 4), style: .continuous)
+      let shape = RoundedRectangle(cornerRadius: max(4, theme.cornerRadius - 2), style: .continuous)
       if let image {
         Image(uiImage: image)
           .resizable()
@@ -329,7 +336,9 @@
           } label: {
             HStack(spacing: 8) {
               VStack(alignment: .leading, spacing: 2) {
-                CnctUserText(text: choice.title, style: .subheadline, weight: .semibold, color: theme.primary)
+                CnctUserText(
+                  text: choice.title, style: .subheadline, weight: .semibold,
+                  color: active ? theme.primaryText : theme.textMuted)
                 if let description = choice.description {
                   CnctUserText(text: description, style: .caption, color: theme.textMuted)
                 }
@@ -350,12 +359,12 @@
             )
             .overlay(
               RoundedRectangle(cornerRadius: flow.choicesAsRows ? min(theme.cornerRadius, 12) : 22, style: .continuous)
-                .stroke(theme.primary.opacity(active ? 0.55 : 0.25).color, lineWidth: 1)
+                .stroke(active ? theme.primary.opacity(0.6).color : theme.border.color, lineWidth: 1)
             )
           }
           .buttonStyle(.plain)
+          // Answered, or overtaken: still there as a record of what was asked, no longer a button.
           .disabled(!active)
-          .opacity(active ? 1 : 0.5)
         }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -378,7 +387,7 @@
             Button {
               send(suggestion)
             } label: {
-              CnctUserText(text: suggestion, style: .subheadline, weight: .medium, color: theme.primary, lineLimit: 1)
+              CnctUserText(text: suggestion, style: .subheadline, weight: .medium, color: theme.primaryText, lineLimit: 1)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 40)
                 .background(Capsule().fill(theme.primary.opacity(0.10).color))

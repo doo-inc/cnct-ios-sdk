@@ -130,6 +130,20 @@ struct ThemeTests {
     #expect(custom.onPrimary.contrast(with: custom.primary) >= 4.5)
   }
 
+  @Test("words in the brand colour read at 4.5:1, and the brand colour is left alone where it already does")
+  func primaryText() {
+    for dark in [false, true] {
+      for brand in ["#b52d93", "#D7262E", "#ffd400", "#0057b8", "#22c55e"] {
+        let resolved = CnctChatTheme(primary: CnctChatColor(hex: brand)!, appearance: dark ? .dark : .light)
+          .resolved(widget: nil, business: "", systemIsDark: false)
+        #expect(resolved.primaryText.contrast(with: resolved.background) >= 4.5, "\(brand) on \(dark ? "dark" : "light")")
+        #expect(resolved.primaryText.contrast(with: resolved.surface) >= 4.5, "\(brand) on \(dark ? "dark" : "light")")
+      }
+    }
+    let untouched = CnctChatTheme().resolved(widget: nil, business: "", systemIsDark: false)
+    #expect(untouched.primaryText == untouched.primary)
+  }
+
   @Test("colours parse in the three hex forms, and nothing else")
   func hex() {
     #expect(CnctChatColor(hex: "#fff") == .white)

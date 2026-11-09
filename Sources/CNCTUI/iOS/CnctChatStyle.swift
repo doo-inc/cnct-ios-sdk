@@ -186,7 +186,7 @@
           if let sender, sender.kind == .ai {
             Image(systemName: "sparkles")
               .font(.system(size: size * 0.5, weight: .semibold))
-              .foregroundColor(theme.primary.color)
+              .foregroundColor(theme.primaryText.color)
               .frame(width: size, height: size)
               .background(Circle().fill(theme.primary.opacity(0.16).color))
           } else if let sender, sender.kind == .person, let name = sender.name {
