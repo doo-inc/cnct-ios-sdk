@@ -591,7 +591,11 @@ struct SocketFrameTests {
     ])
     #expect(await eventually { chat.state.messages.first?.attachments.count == 1 })
     #expect(chat.state.messages.map(\.id) == ["m1", "m2"])
-    #expect(log.count { if case .messageUpdated(let message) = $0 { return message.id == "m1" } else { return false } } == 1)
+    // The event reaches the log's own task a moment after the state changes, so it is waited for too.
+    #expect(
+      await eventually {
+        log.count { if case .messageUpdated(let message) = $0 { return message.id == "m1" } else { return false } } == 1
+      })
 
     // One this client has never seen is not appended: it belongs to a conversation not on screen.
     sockets.last.push(["type": "chat.message.updated", "payload": ["message": messageJson(id: "m7", speaker: "AI", body: "?")]])
@@ -611,7 +615,7 @@ struct SocketFrameTests {
     sockets.last.push(["type": "chat.read", "payload": ["at": "2026-09-08T10:02:00.000Z"]])
     #expect(await eventually { chat.state.conversation?.seenAt == utc(2026, 9, 8, 10, 2) })
     #expect(chat.state.seenMessageId == "m2")
-    #expect(log.count { $0 == .read(utc(2026, 9, 8, 10, 2)) } == 1)
+    #expect(await eventually { log.count { $0 == .read(utc(2026, 9, 8, 10, 2)) } == 1 })
     await chat.dispose()
   }
 
