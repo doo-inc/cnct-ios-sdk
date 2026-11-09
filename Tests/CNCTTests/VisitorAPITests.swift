@@ -16,7 +16,9 @@ private func live(
   let log = EventLog(chat.events)
   try await chat.start(displayName: "Layla")
   sockets.last.push(["type": "authenticated", "accepts": .array(accepts)])
-  #expect(await eventually { log.count { $0 == .connected } == 1 })
+  // Generous, because a loaded CI simulator has taken over five seconds for this; it returns the
+  // moment the socket is up.
+  #expect(await eventually(within: 20) { log.count { $0 == .connected } == 1 })
   sockets.last.clearSent()
   return log
 }
