@@ -76,6 +76,19 @@ public actor CnctChatClient {
   private var socketSendSupported = false
   private var closedByUs = false
   private var disposed = false
+  /// The start in flight, shared by everything that needs a session at once — a message and a file
+  /// picked in the same moment start one conversation, not two.
+  private var starting: Task<Void, any Error>?
+  /// The `replyId` each unsent message carries, so a retry sends the same choice again.
+  private var replyIds: [String: String] = [:]
+  /// Per conversation, the newest reply already reported as read — so each is reported once.
+  private var reportedRead: [String: String] = [:]
+  /// Attachment bytes by id, fetched or sent from this device. A thread is redrawn whenever anything
+  /// moves, and without this every photo in it would be downloaded again each time.
+  private var attachmentCache: [String: Data] = [:]
+  private var attachmentCacheOrder: [String] = []
+  private var attachmentCacheBytes = 0
+  private static let attachmentCacheLimit = 64 * 1024 * 1024
 
   /// - Parameters:
   ///   - tokenStore: Where the visitor's session token is kept between launches. The default keeps
@@ -166,6 +179,9 @@ public actor CnctChatClient {
     let body: [String: CnctJSON?] = [
       "displayName": name.flatMap { $0.isEmpty ? nil : .string($0) },
       "phone": number.flatMap { $0.isEmpty ? nil : .string($0) },
+      // The visitor's own clock, so the team's "back at nine" and the business's hours are said in
+      // it rather than in the server's.
+      "timezone": .string(Self.timeZone),
     ]
     let json = try await transport.post(
       "/api/chat/public/\(CnctConfig.pathSegment(publicKey))/session",
@@ -187,7 +203,8 @@ public actor CnctChatClient {
     try await loadToken()
     guard token != nil else { return false }
     do {
-      let json = try await transport.get("/api/chat/public/session", headers: tokenHeader())
+      let json = try await transport.get(
+        "/api/chat/public/session", query: ["timezone": Self.timeZone], headers: tokenHeader())
       await adoptSession(try json.requireObject())
       if current.conversation?.status == .closed {
         var next = current
@@ -203,9 +220,67 @@ public actor CnctChatClient {
     }
   }
 
+  /// Make sure there is a conversation to write in, starting one if there is not.
+  ///
+  /// For an inbox that lets visitors type first: the conversation starts with their first message
+  /// or their first file, whichever comes first, and the two share one start rather than racing to
+  /// make two. A no-op while a live conversation is open.
+  public func startIfNeeded(displayName: String? = nil, phone: String? = nil) async throws {
+    if token != nil, let conversation = current.conversation, conversation.isLive,
+      current.status != .idle, current.status != .ended
+    {
+      return
+    }
+    if let starting { return try await starting.value }
+    let task = Task { try await self.start(displayName: displayName, phone: phone) }
+    starting = task
+    defer { starting = nil }
+    try await task.value
+  }
+
+  /// Sign the visitor in as one of your app's users.
+  ///
+  /// The current session token goes with the call, so a chat this person started anonymously before
+  /// signing in moves across to them. The token that comes back replaces it, in the store as well.
+  /// If a conversation was open it is picked up again under the new token.
+  ///
+  /// Fails with ``CnctErrorCode/conflict`` (`409`) when the inbox has no identity secret set up, and
+  /// ``CnctErrorCode/unauthenticated`` (`401`) when `userHash` did not verify. Neither touches the
+  /// session this client already had, so an app can carry on with an anonymous chat.
+  @discardableResult
+  public func identify(_ identity: CnctChatIdentity) async throws -> CnctChatVisitor {
+    try await loadToken()
+    let json = try await transport.post(
+      "/api/chat/public/\(CnctConfig.pathSegment(publicKey))/identify",
+      body: identity.json,
+      headers: tokenHeader()
+    )
+    let data = try json.requireObject()
+    guard let token = data["token"]?.stringValue, !token.isEmpty else {
+      throw CnctError("The server signed the visitor in without a session token.", code: .badResponse)
+    }
+    let visitor = data["visitor"].flatMap { $0.objectValue == nil ? nil : CnctChatVisitor(json: $0) }
+    let hadConversation = current.conversation != nil || socket != nil
+
+    teardownSocket()
+    reportedRead = [:]
+    self.token = token
+    tokenLoaded = true
+    do {
+      try await store.write(storageKey, value: token)
+    } catch {
+      config.logger?(.warning, "Could not store the chat session token", error)
+    }
+    var next = CnctChatState(inbox: current.inbox, visitor: visitor ?? current.visitor)
+    next.status = .idle
+    patch(next)
+    if hadConversation { _ = try? await resume() }
+    return visitor ?? current.visitor ?? CnctChatVisitor(displayName: "")
+  }
+
   // MARK: - Saying something
 
-  /// Say something. Answers once the server has it.
+  /// Say something — words, files, or both. Answers once the server has it.
   ///
   /// The optimistic bubble goes into ``state`` immediately and is replaced in place when the real
   /// row arrives — matched on `clientKey`, which is also the frame id and also the server's
@@ -213,41 +288,63 @@ public actor CnctChatClient {
   ///
   /// On failure the bubble stays, marked ``CnctChatMessage/failed``, and the error is thrown. Do not
   /// clear it: the words somebody typed vanishing is worse than a retry button.
+  ///
+  /// - Parameters:
+  ///   - attachments: Files already uploaded with ``upload(_:progress:)``. Up to ten.
+  ///   - replyId: The ``CnctChatFlow/Choice/id`` of a flow choice the visitor tapped, with the
+  ///     choice's title as `body`. The flow then follows the button exactly rather than reading the
+  ///     title as typing.
   @discardableResult
-  public func send(_ body: String, clientKey: String? = nil) async throws -> CnctChatMessage {
+  public func send(
+    _ body: String = "",
+    attachments: [CnctChatAttachment] = [],
+    replyId: String? = nil,
+    clientKey: String? = nil
+  ) async throws -> CnctChatMessage {
     try await loadToken()
     guard token != nil else {
       throw CnctError("Start a conversation first.", code: .noSession)
     }
     let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !text.isEmpty else {
+    guard !text.isEmpty || !attachments.isEmpty else {
       throw CnctError("Nothing to send.", code: .empty)
     }
+    if text.utf16.count > Self.maxBody {
+      throw CnctError("A message can be up to \(Self.maxBody) characters.", code: .tooLarge)
+    }
+    if attachments.count > CnctChatAttachments.maxFiles {
+      throw CnctError("Up to \(CnctChatAttachments.maxFiles) files at a time.", code: .tooMany)
+    }
     let key = clientKey ?? Self.uid()
+    if let replyId { replyIds[key] = replyId }
 
     var next = current
     if let existing = next.messages.firstIndex(where: { $0.clientKey == key }) {
       next.messages[existing].pending = true
       next.messages[existing].failed = false
     } else {
-      next.messages.append(.optimistic(clientKey: key, body: text))
+      next.messages.append(.optimistic(clientKey: key, body: text, attachments: attachments))
     }
     patch(next)
 
+    // One body for both paths, because they are one endpoint behind two doors.
+    var payload: [String: CnctJSON] = ["body": .string(text), "clientKey": .string(key)]
+    if !attachments.isEmpty { payload["attachmentIds"] = .array(attachments.map { .string($0.id) }) }
+    if let replyId = replyIds[key] { payload["replyId"] = .string(replyId) }
+
     do {
+      let message: CnctChatMessage
       if socketSendSupported, socket != nil {
-        return try await sendOverSocket(key, text)
+        message = try await sendOverSocket(key, payload)
+      } else {
+        // The fallback, and a real path rather than a formality: it runs against a server that
+        // predates socket sends, and whenever the socket happens to be between connections. Same
+        // endpoint, same idempotency key.
+        let json = try await transport.post("/api/chat/public/messages", body: .object(payload), headers: tokenHeader())
+        message = CnctChatMessage(json: .object(try json.requireObject()))
+        absorb(message)
       }
-      // The fallback, and a real path rather than a formality: it runs against a server that
-      // predates socket sends, and whenever the socket happens to be between connections. Same
-      // endpoint, same idempotency key.
-      let json = try await transport.post(
-        "/api/chat/public/messages",
-        body: ["body": .string(text), "clientKey": .string(key)],
-        headers: tokenHeader()
-      )
-      let message = CnctChatMessage(json: .object(try json.requireObject()))
-      absorb(message)
+      replyIds[key] = nil
       return message
     } catch let error as CnctError {
       markFailed(key)
@@ -271,7 +368,7 @@ public actor CnctChatClient {
     guard let message = current.messages.first(where: { $0.clientKey == clientKey }) else {
       throw CnctError("No message with that key.", code: .notFound)
     }
-    return try await send(message.body, clientKey: clientKey)
+    return try await send(message.body, attachments: message.attachments, clientKey: clientKey)
   }
 
   /// Tell the other side somebody is typing. Throttled to one frame every three seconds here, and
@@ -290,25 +387,210 @@ public actor CnctChatClient {
     guard token != nil else { return }
     _ = try await transport.post("/api/chat/public/close", headers: tokenHeader())
     closedByUs = true
-    var next = current
-    next.status = .ended
-    patch(next)
+    closeConversation()
     teardownSocket()
+    await refreshConversation()
+  }
+
+  // MARK: - After the conversation
+
+  /// Tell the team the visitor has their reply on screen — the ticks in the business's console.
+  ///
+  /// Call it whenever a reply is visible and the app is in the foreground; it reports each reply
+  /// once. The newest reply from the team or the assistant is remembered once reported, and the next
+  /// report waits for a newer one. A report that fails is forgotten, so the next call retries it.
+  /// Answers whether anything was sent.
+  @discardableResult
+  public func markRead() async -> Bool {
+    guard token != nil, let conversation = current.conversation, !conversation.id.isEmpty,
+      let reply = current.messages.last(where: \.isReply)
+    else { return false }
+    if reportedRead[conversation.id] == reply.id { return false }
+    reportedRead[conversation.id] = reply.id
+    do {
+      try await markRead(conversationId: conversation.id)
+      return true
+    } catch {
+      if reportedRead[conversation.id] == reply.id { reportedRead[conversation.id] = nil }
+      return false
+    }
+  }
+
+  /// The raw call behind ``markRead()``, for any of this visitor's conversations: `204`, nothing to
+  /// read back.
+  public func markRead(conversationId: String) async throws {
+    try await loadToken()
+    guard token != nil else { throw CnctError("Start a conversation first.", code: .noSession) }
+    _ = try await transport.post(
+      "/api/chat/public/conversations/\(CnctConfig.pathSegment(conversationId))/read",
+      headers: tokenHeader()
+    )
+  }
+
+  /// Rate a closed conversation, one to five, worst to best — and, in a second call with the same
+  /// score, add a comment.
+  ///
+  /// The face is the answer, so it is worth sending the moment it is tapped: somebody who taps and
+  /// closes the app has still told the business something. Answers the conversation as the server
+  /// now has it. ``CnctErrorCode/conflict`` once it can no longer be rated.
+  ///
+  /// - Parameter conversationId: Defaults to the conversation in ``state``.
+  @discardableResult
+  public func rate(_ score: Int, comment: String? = nil, conversationId: String? = nil) async throws
+    -> CnctChatConversation
+  {
+    try await loadToken()
+    guard token != nil else { throw CnctError("Start a conversation first.", code: .noSession) }
+    guard (1...5).contains(score) else {
+      throw CnctError("A rating is from 1 to 5.", code: .invalid)
+    }
+    guard let id = conversationId ?? current.conversation?.id, !id.isEmpty else {
+      throw CnctError("There is no conversation to rate.", code: .notFound)
+    }
+    var body: [String: CnctJSON] = ["score": .int(score)]
+    if let comment { body["comment"] = .string(comment.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    let json = try await transport.post(
+      "/api/chat/public/conversations/\(CnctConfig.pathSegment(id))/rating",
+      body: .object(body),
+      headers: tokenHeader()
+    )
+    guard let raw = json["conversation"], raw.objectValue != nil else {
+      throw CnctError("The server answered a rating without the conversation.", code: .badResponse)
+    }
+    var rated = CnctChatConversation(json: raw)
+    if current.conversation?.id == id, let known = current.conversation {
+      // The answer is the server's view of the conversation; laid over what is known, so a field it
+      // leaves out of this answer is not wiped.
+      rated = known.patched(with: raw)
+      var next = current
+      next.conversation = rated
+      patch(next)
+    }
+    return rated
+  }
+
+  /// Give the visitor a name — what a UI asks for in the thread when somebody typed before saying
+  /// who they are. Answers the visitor as the server now has them.
+  @discardableResult
+  public func updateProfile(displayName: String, phone: String? = nil) async throws -> CnctChatVisitor {
+    try await loadToken()
+    guard token != nil else { throw CnctError("Start a conversation first.", code: .noSession) }
+    let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty else { throw CnctError("A name cannot be empty.", code: .invalid) }
+    var body: [String: CnctJSON] = ["displayName": .string(name)]
+    if let number = phone?.trimmingCharacters(in: .whitespacesAndNewlines), !number.isEmpty {
+      body["phone"] = .string(number)
+    }
+    let json = try await transport.post("/api/chat/public/profile", body: .object(body), headers: tokenHeader())
+    guard let raw = json["visitor"], raw.objectValue != nil else {
+      throw CnctError("The server answered without the visitor.", code: .badResponse)
+    }
+    let visitor = CnctChatVisitor(json: raw)
+    var next = current
+    next.visitor = visitor
+    patch(next)
+    return visitor
+  }
+
+  // MARK: - Past conversations
+
+  /// The visitor's conversations, newest first, up to fifty, each with its last message in
+  /// ``CnctChatConversation/preview``. Empty for somebody who has not been here before.
+  public func conversations() async throws -> [CnctChatConversation] {
+    try await loadToken()
+    guard token != nil else { return [] }
+    let json = try await transport.get("/api/chat/public/conversations", headers: tokenHeader())
+    adoptVisitor(json["visitor"])
+    return json.objects("conversations").map(CnctChatConversation.init(json:))
+  }
+
+  /// One of the visitor's conversations, with its messages, oldest first. Any of theirs — an old
+  /// one included — but never anybody else's: a stranger's id is a `404`.
+  public func conversation(_ id: String) async throws -> CnctChatTranscript {
+    try await loadToken()
+    guard token != nil else { throw CnctError("Start a conversation first.", code: .noSession) }
+    let json = try await transport.get(
+      "/api/chat/public/conversations/\(CnctConfig.pathSegment(id))", headers: tokenHeader())
+    adoptVisitor(json["visitor"])
+    guard let raw = json["conversation"], raw.objectValue != nil else {
+      throw CnctError("The server answered without the conversation.", code: .badResponse)
+    }
+    return CnctChatTranscript(
+      conversation: CnctChatConversation(json: raw),
+      messages: json.objects("messages").map(CnctChatMessage.init(json:))
+    )
   }
 
   // MARK: - Files
 
   /// The bytes of a file an operator sent. Scoped to this visitor's own conversation by the server;
   /// an id from anywhere else is a 404 rather than a refusal, so a stranger learns nothing.
+  ///
+  /// Any of this visitor's conversations, so a past chat's files open too. Kept in memory by id, so
+  /// asking again — a thread redrawn, a photo opened full screen — is free.
   public func downloadAttachment(_ attachmentId: String) async throws -> Data {
+    if let cached = attachmentCache[attachmentId] { return cached }
     try await loadToken()
     guard token != nil else {
       throw CnctError("Start a conversation first.", code: .noSession)
     }
-    return try await transport.bytes(
+    let data = try await transport.bytes(
       "/api/chat/public/attachments/\(CnctConfig.pathSegment(attachmentId))",
       headers: tokenHeader()
     )
+    remember(data, for: attachmentId)
+    return data
+  }
+
+  /// The bytes of an attachment already on this device — downloaded before, or sent from it — or
+  /// nil. Never touches the network.
+  public func cachedAttachment(_ attachmentId: String) -> Data? {
+    attachmentCache[attachmentId]
+  }
+
+  /// Upload one file, for a message to carry with ``send(_:attachments:replyId:clientKey:)``.
+  ///
+  /// **Photos are made ready first** — HEIC converted to JPEG, anything over 2560 px scaled down —
+  /// by ``CnctChatAttachments/prepare(_:)``, and then **checked**, so a file the server would
+  /// refuse is refused here before a byte of it is sent: ``CnctErrorCode/tooLarge`` over 50 MB,
+  /// ``CnctErrorCode/unsupportedType`` for a kind of file the chat does not take. One file per call,
+  /// as the server takes them; upload several side by side.
+  ///
+  /// `progress` hears 0 to 1 as the file goes, on a background queue. The server's refusals arrive
+  /// as ``CnctErrorCode/attachmentsDisabled`` (the inbox or the deployment takes no files),
+  /// ``CnctErrorCode/conversationClosed``, ``CnctErrorCode/tooLarge`` and
+  /// ``CnctErrorCode/unsupportedType``, with the server's sentence as the message.
+  public func upload(_ file: CnctUploadFile, progress: (@Sendable (Double) -> Void)? = nil) async throws
+    -> CnctChatAttachment
+  {
+    try await loadToken()
+    guard token != nil else {
+      throw CnctError("Start a conversation first.", code: .noSession)
+    }
+    // Off the actor: redrawing a 48-megapixel photo takes long enough that a chat waiting behind it
+    // would notice.
+    let prepared = await Task.detached(priority: .userInitiated) { CnctChatAttachments.prepare(file) }.value
+    try CnctChatAttachments.check(prepared)
+    let multipart = CnctMultipart(field: "file", file: prepared)
+    progress?(0)
+    let json: CnctJSON
+    do {
+      json = try await transport.upload(
+        "/api/chat/public/attachments",
+        body: multipart.body,
+        contentType: multipart.contentType,
+        headers: tokenHeader(),
+        progress: progress
+      )
+    } catch let error as CnctError {
+      throw Self.uploadRefusal(error)
+    }
+    guard let raw = json["attachment"], let id = raw["id"]?.stringValue, !id.isEmpty else {
+      throw CnctError("The server took the file without saying what it stored.", code: .badResponse)
+    }
+    // The server's copy, when it comes back on the message, is drawn from the bytes on this device.
+    remember(prepared.data, for: id)
+    return CnctChatAttachment(json: raw)
   }
 
   /// The request that fetches an attachment, with the headers it needs.
@@ -472,22 +754,46 @@ public actor CnctChatClient {
       }
       emit(.typingReceived)
 
-    case "chat.conversation.updated":
-      if let payload = frame["payload"]?["conversation"], payload.objectValue != nil {
-        let conversation = CnctChatConversation(json: payload)
+    case "chat.message.updated":
+      // Edited, deleted, or a file that finished storing: the same row, changed. Replaced where it
+      // stands rather than appended, so the thread does not grow a second copy.
+      if let payload = frame["payload"]?["message"], payload.objectValue != nil {
+        let message = CnctChatMessage(json: payload)
+        if let at = current.messages.firstIndex(where: { $0.id == message.id && !message.id.isEmpty }) {
+          var next = current
+          next.messages[at] = message
+          patch(next)
+          emit(.messageUpdated(message))
+        }
+      }
+
+    case "chat.read":
+      if let at = CnctDates.parse(frame["payload"]?["at"]?.stringValue), var conversation = current.conversation {
+        conversation.seenAt = max(conversation.seenAt ?? at, at)
         var next = current
         next.conversation = conversation
         patch(next)
-        emit(.conversationUpdated(conversation))
+        emit(.read(at))
       }
+
+    case "chat.conversation.updated":
+      // Two shapes in the wild: the change under `conversation`, and the changed fields as the
+      // payload itself. Either way only what it carries moves.
+      guard let payload = frame["payload"], payload.objectValue != nil else { return }
+      let change = payload["conversation"].flatMap { $0.objectValue == nil ? nil : $0 } ?? payload
+      let conversation = current.conversation?.patched(with: change) ?? CnctChatConversation(json: change)
+      var next = current
+      next.conversation = conversation
+      patch(next)
+      emit(.conversationUpdated(conversation))
 
     case "chat.closed":
       closedByUs = true
-      var next = current
-      next.status = .ended
-      patch(next)
+      closeConversation()
       emit(.closed)
       teardownSocket()
+      // The server's view of it — above all whether it can be rated — a moment later.
+      Task { [weak self] in await self?.refreshConversation() }
 
     default:
       // An unknown frame is a newer server talking, not an error. Ignored on purpose.
@@ -588,7 +894,7 @@ public actor CnctChatClient {
     closing?.close(code: 1000, reason: "Client closed")
   }
 
-  private func sendOverSocket(_ key: String, _ text: String) async throws -> CnctChatMessage {
+  private func sendOverSocket(_ key: String, _ payload: [String: CnctJSON]) async throws -> CnctChatMessage {
     try await withCheckedThrowingContinuation { continuation in
       awaiting[key, default: []].append(continuation)
       awaitingTimers.removeValue(forKey: key)?.cancel()
@@ -598,7 +904,10 @@ public actor CnctChatClient {
         guard !Task.isCancelled else { return }
         await self?.sendTimedOut(key)
       }
-      say(["type": "send", "id": .string(key), "body": .string(text), "clientKey": .string(key)])
+      var frame = payload
+      frame["type"] = "send"
+      frame["id"] = .string(key)
+      say(.object(frame))
     }
   }
 
@@ -692,7 +1001,72 @@ public actor CnctChatClient {
     }
   }
 
+  /// The conversation is over: say so in state now, before the server has been asked anything.
+  private func closeConversation() {
+    var next = current
+    next.status = .ended
+    if var conversation = next.conversation {
+      conversation.status = .closed
+      conversation.closedAt = conversation.closedAt ?? Date()
+      next.conversation = conversation
+    }
+    patch(next)
+  }
+
+  /// Read the conversation in state again — after it closed, to learn whether it can be rated. A
+  /// failure leaves state as it is: the thread is already right, and the rating waits for the next
+  /// load.
+  private func refreshConversation() async {
+    guard token != nil, let id = current.conversation?.id, !id.isEmpty,
+      let transcript = try? await conversation(id), current.conversation?.id == id
+    else { return }
+    var next = current
+    next.conversation = transcript.conversation
+    let stored = Set(transcript.messages.compactMap(\.clientKey))
+    next.messages = transcript.messages + current.messages.filter { message in
+      guard let key = message.clientKey, message.pending || message.failed else { return false }
+      return !stored.contains(key)
+    }
+    patch(next)
+  }
+
+  private func adoptVisitor(_ json: CnctJSON?) {
+    guard let json, json.objectValue != nil else { return }
+    var next = current
+    next.visitor = CnctChatVisitor(json: json)
+    patch(next)
+  }
+
+  private func remember(_ data: Data, for id: String) {
+    if attachmentCache[id] == nil {
+      attachmentCacheOrder.append(id)
+      attachmentCacheBytes += data.count
+    }
+    attachmentCache[id] = data
+    // Oldest out first, past a budget, so a long thread full of photos cannot grow without end.
+    while attachmentCacheBytes > Self.attachmentCacheLimit, attachmentCacheOrder.count > 1 {
+      let oldest = attachmentCacheOrder.removeFirst()
+      attachmentCacheBytes -= attachmentCache.removeValue(forKey: oldest)?.count ?? 0
+    }
+  }
+
+  /// The attachments endpoint's refusals, named for what they mean there. A code the server sent
+  /// itself is kept as it is.
+  static func uploadRefusal(_ error: CnctError) -> CnctError {
+    guard let status = error.status, error.details?["code"]?.stringValue == nil else { return error }
+    let code: CnctErrorCode
+    switch status {
+    case 403, 503: code = .attachmentsDisabled
+    case 409: code = .conversationClosed
+    case 413: code = .tooLarge
+    case 415, 422: code = .unsupportedType
+    default: return error
+    }
+    return CnctError(error.message, code: code, status: status, details: error.details)
+  }
+
   private func forgetSession() async {
+    reportedRead = [:]
     token = nil
     tokenLoaded = true
     teardownSocket()
@@ -742,6 +1116,12 @@ public actor CnctChatClient {
   private func emit(_ event: CnctChatEvent) {
     eventBroadcast.yield(event)
   }
+
+  /// The longest body a message can carry, in UTF-16 code units — what the server counts.
+  static let maxBody = 4000
+
+  /// The device's IANA time zone, sent with every session call.
+  static var timeZone: String { TimeZone.current.identifier }
 
   private static func uid() -> String {
     let alphabet = Array("0123456789abcdefghijklmnopqrstuvwxyz")
