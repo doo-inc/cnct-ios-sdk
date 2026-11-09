@@ -13,15 +13,20 @@ jobs:
   macos:
     name: Package (macOS)
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
+      # Both libraries build on macOS: CNCTUI's screen is iOS only, and what is left of it here — the
+      # theme, the words, text direction, the fixture — is tested here too.
       - run: swift build
       - run: swift test
 
   ios:
     name: iOS Simulator
     runs-on: macos-15
+    # A test that hangs should cost half an hour, not the six a job is otherwise allowed.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       # The first available iPhone, by id. Simulator names change with every runner image, and a
@@ -35,12 +40,30 @@ jobs:
           print(next(d['udid'] for runtime, items in devices.items() if 'iOS' in runtime for d in items if d['name'].startswith('iPhone')))
           ")"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
-      - name: Test on the simulator
-        run: xcodebuild test -scheme CNCT -destination "id=${{ steps.sim.outputs.udid }}"
+          xcrun simctl list devices available | grep "$udid"
+      - name: Schemes
+        run: xcodebuild -list
+      # Every test target, CNCTUI's included, on the simulator. The screenshot test renders the
+      # fixture conversation with the real screen and writes the PNGs where this says — outside the
+      # checkout, because a file appearing inside the package sets Xcode resolving it again.
+      - name: Test on the simulator, and render the screenshots
+        env:
+          TEST_RUNNER_CNCT_SCREENSHOTS_DIR: ${{ runner.temp }}/screenshots
+        run: |
+          mkdir -p "$TEST_RUNNER_CNCT_SCREENSHOTS_DIR"
+          xcodebuild test -scheme CNCT-Package -destination "id=${{ steps.sim.outputs.udid }}"
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots/*.png
+          if-no-files-found: error
 
   example:
     name: Example app
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       # A build, not a run: it proves the example still compiles against the package as it is on

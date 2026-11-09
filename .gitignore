@@ -10,3 +10,6 @@ DerivedData/
 # The example app is an app, so it has a project — the package itself does not need one.
 !Examples/ChatDemo/ChatDemo.xcodeproj
 Examples/ChatDemo/Local.xcconfig
+
+# Rendered by the screenshot test; CI uploads them as an artifact.
+/screenshots
