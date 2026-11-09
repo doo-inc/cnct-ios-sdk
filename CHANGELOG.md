@@ -58,14 +58,15 @@ Everything the hosted chat page does, now in the headless client, so the SDK sto
   optimistic bubble shows the files at once.
 - **Attachments, receiving**: `downloadAttachment(_:)` keeps what it fetched in memory by id, and
   `cachedAttachment(_:)` answers without the network — including the files this device just sent.
-- **Flow choices**: `send(title, replyId: choice.id)`. A retry sends the same `replyId` and files.
+- **Flow choices**: `choose(choice)` — `send(choice.title, replyId: choice.id)`. A retry sends the
+  same `replyId` and files.
 - **Signed-in users**: `identify(_:)` with a `CnctChatIdentity` (`userId`, `userHash` from your
   server, and optional name, email and phone). The current token goes with it, so an anonymous chat
   moves across; the token it answers replaces it. An identity never prints its hash.
-- `startIfNeeded()`, for an inbox that lets visitors type first: a message and a file picked in the
+- `ensureSession()`, for an inbox that lets visitors type first: a message and a file picked in the
   same moment start one conversation.
-- `conversations()` and `conversation(_:)` (a `CnctChatTranscript`), `markRead()` (each reply
-  reported once) and `markRead(conversationId:)`, `rate(_:comment:conversationId:)`,
+- `conversations()` and `conversation(_:)` (a `CnctChatTranscript`), `read()` (each reply
+  reported once) and `read(conversationId:)`, `rate(_:comment:conversationId:)`,
   `updateProfile(displayName:phone:)`.
 - `CnctChatConversation` gains `id`, `closedAt`, `assignee`, `seenAt`, `ratable`, `rating`,
   `lastMessageAt` and `preview`; `CnctChatVisitor` gains `anonymous` and `identified`;

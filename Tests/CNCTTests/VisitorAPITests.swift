@@ -370,6 +370,18 @@ struct VisitorAPITests {
     await chat.dispose()
   }
 
+  @Test("choosing a flow choice sends its title, with its id as replyId")
+  func choose() async throws {
+    let api = VisitorServer()
+    let chat = api.client()
+    try await chat.start()
+    try await chat.choose(CnctChatFlow.Choice(id: "choice_book", title: "Book a visit"))
+    let post = try #require(api.requests("POST", "/api/chat/public/messages").first)
+    #expect(post.json["body"]?.stringValue == "Book a visit")
+    #expect(post.json["replyId"]?.stringValue == "choice_book")
+    await chat.dispose()
+  }
+
   @Test("over the socket, the send frame carries the same body as the HTTP path")
   func socketFrame() async throws {
     let api = VisitorServer()
@@ -501,15 +513,15 @@ struct VisitorAPITests {
     let chat = api.client(sockets: sockets)
     try await chat.start()
 
-    #expect(await chat.markRead() == false)  // the server refused: forgotten, so it is tried again
+    #expect(await chat.read() == false)  // the server refused: forgotten, so it is tried again
     status.set(204)
-    #expect(await chat.markRead())
-    #expect(await chat.markRead() == false)  // already reported
+    #expect(await chat.read())
+    #expect(await chat.read() == false)  // already reported
     #expect(api.requests("POST", "/api/chat/public/conversations/conv_1/read").count == 2)
 
     sockets.last.push(["type": "chat.message", "payload": ["message": messageJson(id: "m4", speaker: "AI", body: "Anything else?")]])
     #expect(await eventually { chat.state.messages.last?.id == "m4" })
-    #expect(await chat.markRead())
+    #expect(await chat.read())
     #expect(api.requests("POST", "/api/chat/public/conversations/conv_1/read").count == 3)
     // A POST with nothing to describe says nothing about JSON — the server refuses one that does.
     #expect(api.requests("POST", "/api/chat/public/conversations/conv_1/read").last?.header("content-type") == nil)
@@ -522,7 +534,7 @@ struct VisitorAPITests {
     api.transcript = [messageJson(id: "m1", speaker: "CALLER", body: "Hi")]
     let chat = api.client()
     try await chat.start()
-    #expect(await chat.markRead() == false)
+    #expect(await chat.read() == false)
     #expect(api.requests("POST", "/api/chat/public/conversations/conv_1/read").isEmpty)
     await chat.dispose()
   }
