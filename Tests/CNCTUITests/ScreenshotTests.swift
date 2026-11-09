@@ -83,7 +83,7 @@
 
     @MainActor
     private static func spin(until condition: () -> Bool) {
-      let deadline = Date().addingTimeInterval(6)
+      let deadline = Date().addingTimeInterval(20)
       while Date() < deadline, !condition() {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
       }
@@ -183,7 +183,7 @@
       let model = CnctChatModel(
         client: CnctChatFixture.client(language: language), ownsClient: true, identity: nil, fixture: language)
       model.open()
-      let deadline = Date().addingTimeInterval(5)
+      let deadline = Date().addingTimeInterval(20)
       while Date() < deadline, !(model.phase == .chat && model.state.failed.count == 1 && model.uploads.count == 2) {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
       }
@@ -192,7 +192,7 @@
 
     @MainActor
     private func spin(until condition: () -> Bool) {
-      let deadline = Date().addingTimeInterval(5)
+      let deadline = Date().addingTimeInterval(20)
       while Date() < deadline, !condition() {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
       }

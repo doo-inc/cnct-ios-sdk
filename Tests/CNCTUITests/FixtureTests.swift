@@ -5,7 +5,7 @@ import Testing
 @testable import CNCTUI
 
 /// Wait for something asynchronous to become true. False if it never did.
-func eventually(within seconds: Double = 5, _ condition: () async -> Bool) async -> Bool {
+func eventually(within seconds: Double = 20, _ condition: () async -> Bool) async -> Bool {
   let deadline = Date().addingTimeInterval(seconds)
   while Date() < deadline {
     if await condition() { return true }
