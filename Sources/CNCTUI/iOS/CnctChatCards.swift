@@ -3,8 +3,9 @@
   import SwiftUI
   import UIKit
 
-  /// "How did we do?" under a conversation that has ended: five faces, worst to best, each with its
-  /// word — a face is read differently across cultures, and a screen reader reads none of them well.
+  /// "How did we do?" under a conversation that has ended: five faces, worst to best in the reading
+  /// direction — so right to left in Arabic, as the hosted page lays them out — each with its word: a
+  /// face is read differently across cultures, and a screen reader reads none of them well.
   struct CnctRatingCard: View {
     @ObservedObject var model: CnctChatModel
     let conversation: CnctChatConversation
@@ -42,7 +43,6 @@
             .accessibilityAddTraits(score == value ? .isSelected : [])
           }
         }
-        .environment(\.layoutDirection, .leftToRight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(words("ratePrompt"))
         if let score {
